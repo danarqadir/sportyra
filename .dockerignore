@@ -1,0 +1,49 @@
+# ============================================================================
+# Sportyra News — Docker ignore
+# ============================================================================
+
+# Dependencies (rebuilt in Docker)
+node_modules
+
+# Build artifacts (rebuilt in Docker)
+dist
+artifacts/*/dist
+artifacts/api-server/dist
+artifacts/sportyra/dist
+
+# Environment files (secrets — never in image)
+.env
+.env.*
+!.env.example
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+
+# Dev tools
+.cache
+.local
+coverage
+
+# Replit-specific
+.replit*
+.replit-artifact
+
+# Mockup sandbox (not production code)
+artifacts/mockup-sandbox/
