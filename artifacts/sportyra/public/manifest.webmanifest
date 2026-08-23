@@ -1,0 +1,15 @@
+{
+  "name": "Sportyra News",
+  "short_name": "Sportyra",
+  "description": "Independent sports journalism, globally minded.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f2e8",
+  "theme_color": "#ed5a3b",
+  "categories": ["news", "sports"],
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

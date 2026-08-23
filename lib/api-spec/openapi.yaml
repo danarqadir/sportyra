@@ -1,0 +1,747 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: news
+    description: Sports news publishing operations
+  - name: newsletter
+    description: Newsletter subscription operations
+  - name: storage
+    description: Object storage upload and serving endpoints
+  - name: auth
+    description: User account and session operations
+  - name: analytics
+    description: First-party privacy-conscious analytics
+paths:
+  /auth/register:
+    post:
+      operationId: registerAccount
+      tags: [auth]
+      summary: Register a user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid registration data
+        "409":
+          description: Email already registered
+  /auth/login:
+    post:
+      operationId: loginAccount
+      tags: [auth]
+      summary: Sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          description: Invalid credentials
+  /auth/me:
+    get:
+      operationId: getCurrentAccount
+      tags: [auth]
+      summary: Get the current signed-in account
+      responses:
+        "200":
+          description: Current account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "401":
+          description: Authentication required
+  /auth/logout:
+    post:
+      operationId: logoutAccount
+      tags: [auth]
+      summary: Sign out
+      responses:
+        "204":
+          description: Signed out
+  /analytics/events:
+    post:
+      operationId: trackAnalyticsEvent
+      tags: [analytics]
+      summary: Track a first-party analytics event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsEventInput"
+      responses:
+        "204":
+          description: Event accepted
+        "400":
+          description: Invalid event
+  /analytics/summary:
+    get:
+      operationId: getAnalyticsSummary
+      tags: [analytics]
+      summary: Get analytics summary
+      responses:
+        "200":
+          description: Last 30 days of analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSummary"
+  /notifications/stream:
+    get:
+      operationId: notificationsStream
+      tags: [analytics]
+      summary: Stream new-story notifications
+      responses:
+        "200":
+          description: Server-sent event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /news:
+    get:
+      operationId: listNews
+      tags: [news]
+      summary: List sports news
+      description: Lists published news for the public site or all news for the admin workspace.
+      parameters:
+        - name: language
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [en, ar]
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: published
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: featured
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 1
+            maximum: 100
+            default: 12
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: News articles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsListResponse"
+    post:
+      operationId: createNews
+      tags: [news]
+      summary: Create a news article
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewsInput"
+      responses:
+        "201":
+          description: Created news article
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsArticle"
+        "400":
+          description: Invalid news article
+  /news/summary:
+    get:
+      operationId: getNewsSummary
+      tags: [news]
+      summary: Get editorial summary
+      description: Returns counts for the admin workspace.
+      responses:
+        "200":
+          description: Editorial summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsSummary"
+  /news/{id}:
+    get:
+      operationId: getNews
+      tags: [news]
+      summary: Get a news article
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: News article
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsArticle"
+        "404":
+          description: News article not found
+    patch:
+      operationId: updateNews
+      tags: [news]
+      summary: Update a news article
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewsUpdate"
+      responses:
+        "200":
+          description: Updated news article
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsArticle"
+        "400":
+          description: Invalid news article
+        "404":
+          description: News article not found
+    delete:
+      operationId: deleteNews
+      tags: [news]
+      summary: Delete a news article
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: News article deleted
+        "404":
+          description: News article not found
+  /news/{id}/publish:
+    post:
+      operationId: publishNews
+      tags: [news]
+      summary: Publish or unpublish a news article
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishNewsInput"
+      responses:
+        "200":
+          description: Updated news article
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsArticle"
+        "404":
+          description: News article not found
+  /news/{id}/feature:
+    post:
+      operationId: featureNews
+      tags: [news]
+      summary: Feature or unfeature a news article
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeatureNewsInput"
+      responses:
+        "200":
+          description: Updated news article
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsArticle"
+        "404":
+          description: News article not found
+  /news/{id}/related:
+    get:
+      operationId: getRelatedNews
+      tags: [news]
+      summary: Get related news articles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Related news articles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NewsArticle"
+  /newsletter/subscribe:
+    post:
+      operationId: subscribeNewsletter
+      tags: [newsletter]
+      summary: Subscribe an email to the Sportyra briefing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewsletterSubscribeInput"
+      responses:
+        "200":
+          description: Newsletter subscription accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsletterSubscribeResponse"
+        "400":
+          description: Invalid email address
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a presigned article image upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          description: Invalid upload metadata
+        "401":
+          description: Admin access required
+        "500":
+          description: Failed to generate upload URL
+  /storage/public-objects/{filePath}:
+    get:
+      operationId: getPublicObject
+      tags: [storage]
+      summary: Serve a public object
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public object
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Object not found
+  /storage/objects/{objectPath}:
+    get:
+      operationId: getStorageObject
+      tags: [storage]
+      summary: Serve an uploaded object
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stored object
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Object not found
+components:
+  schemas:
+    Account:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string }
+    RegisterInput:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    AnalyticsEventInput:
+      type: object
+      required: [eventType, path]
+      properties:
+        eventType:
+          type: string
+          enum: [page_view, article_view, search, newsletter_signup, share]
+        path: { type: string, maxLength: 500 }
+        articleId: { type: integer, nullable: true }
+        referrer: { type: string, maxLength: 1000 }
+        sessionId: { type: string, maxLength: 128 }
+    AnalyticsSummary:
+      type: object
+      required: [since, totals, topPages, topArticles]
+      properties:
+        since: { type: string, format: date-time }
+        totals:
+          type: array
+          items:
+            type: object
+            required: [eventType, total]
+            properties:
+              eventType: { type: string }
+              total: { type: number }
+        topPages:
+          type: array
+          items:
+            type: object
+            required: [path, total]
+            properties:
+              path: { type: string }
+              total: { type: number }
+        topArticles:
+          type: array
+          items:
+            type: object
+            required: [articleId, total]
+            properties:
+              articleId: { type: integer, nullable: true }
+              total: { type: number }
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    NewsArticle:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - image
+        - category
+        - language
+        - source
+        - author
+        - tags
+        - publicationDate
+        - featured
+        - published
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: number
+        title:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        category:
+          type: string
+        language:
+          type: string
+          enum: [en, ar]
+        source:
+          type: string
+        author:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        publicationDate:
+          type: string
+          format: date-time
+        featured:
+          type: boolean
+        published:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    NewsInput:
+      type: object
+      required:
+        - title
+        - description
+        - image
+        - category
+        - language
+        - source
+        - author
+        - publicationDate
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          minLength: 1
+        image:
+          type: string
+          minLength: 1
+        category:
+          type: string
+          minLength: 1
+        language:
+          type: string
+          enum: [en, ar]
+        source:
+          type: string
+          minLength: 1
+        author:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+        publicationDate:
+          type: string
+          format: date-time
+        featured:
+          type: boolean
+          default: false
+        published:
+          type: boolean
+          default: false
+    NewsUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          minLength: 1
+        image:
+          type: string
+          minLength: 1
+        category:
+          type: string
+          minLength: 1
+        language:
+          type: string
+          enum: [en, ar]
+        source:
+          type: string
+          minLength: 1
+        author:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+        publicationDate:
+          type: string
+          format: date-time
+        featured:
+          type: boolean
+        published:
+          type: boolean
+    PublishNewsInput:
+      type: object
+      required:
+        - published
+      properties:
+        published:
+          type: boolean
+    FeatureNewsInput:
+      type: object
+      required:
+        - featured
+      properties:
+        featured:
+          type: boolean
+    NewsSummary:
+      type: object
+      required:
+        - total
+        - published
+        - drafts
+        - featured
+      properties:
+        total:
+          type: number
+        published:
+          type: number
+        drafts:
+          type: number
+        featured:
+          type: number
+    NewsListResponse:
+      type: object
+      required: [items, page, pageSize, total, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NewsArticle"
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+    NewsletterSubscribeInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+    NewsletterSubscribeResponse:
+      type: object
+      required: [subscribed]
+      properties:
+        subscribed:
+          type: boolean
+        alreadySubscribed:
+          type: boolean
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: number
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/UploadUrlRequest"
+

@@ -1,0 +1,29 @@
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "start": "pnpm --filter @workspace/api-server start",
+    "start:production": "node artifacts/api-server/dist/index.mjs",
+    "build:production": "pnpm run typecheck && pnpm --filter @workspace/sportyra build && pnpm --filter @workspace/api-server build",
+    "db:push": "pnpm --filter @workspace/db push",
+    "test": "pnpm --filter @workspace/api-server test"
+  },
+  "private": true,
+  "dependencies": {
+    "@replit/connectors-sdk": "^0.4.1"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.3"
+  },
+  "optionalDependencies": {
+    "@esbuild/win32-x64": "0.27.3",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.3",
+    "lightningcss-win32-x64-msvc": "1.32.0"
+  }
+}

@@ -1,0 +1,44 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import authRouter from "./auth";
+import analyticsRouter from "./analytics";
+import notificationsRouter from "./notifications";
+import newsRouter from "./news";
+import newsletterRouter from "./newsletter";
+import storageRouter from "./storage";
+import pushRouter from "./push";
+import commentsRouter from "./comments";
+import bookmarksRouter from "./bookmarks";
+import fixturesRouter from "./fixtures";
+import moderationRouter from "./moderation";
+import userNotificationsRouter from "./user-notifications";
+import playersRouter from "./players";
+import matchesRouter from "./matches";
+import transfersRouter from "./transfers";
+import predictionsRouter from "./predictions";
+import teamPagesRouter from "./team-pages";
+import partnersRouter from "./partners";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(authRouter);
+router.use(analyticsRouter);
+router.use(notificationsRouter);
+router.use(newsRouter);
+router.use(newsletterRouter);
+router.use(storageRouter);
+router.use(pushRouter);
+router.use(commentsRouter);
+router.use(bookmarksRouter);
+router.use(fixturesRouter);
+router.use(moderationRouter);
+router.use(userNotificationsRouter);
+router.use(playersRouter);
+router.use(matchesRouter);
+router.use(transfersRouter);
+router.use(predictionsRouter);
+router.use(teamPagesRouter);
+router.use(partnersRouter);
+
+export default router;
