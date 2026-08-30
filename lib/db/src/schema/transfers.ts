@@ -1,4 +1,4 @@
-import { integer, pgTable, serial, text, timestamp, index, boolean } from "drizzle-orm/pg-core";
+import { integer, pgTable, serial, text, timestamp, index, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const transfersTable = pgTable("transfers", {
   id: serial("id").primaryKey(),
@@ -12,6 +12,7 @@ export const transfersTable = pgTable("transfers", {
   transferDate: timestamp("transfer_date", { withTimezone: true }),
   source: text("source"),
   confidence: integer("confidence").default(50),
+  apiId: text("api_id"),
   isDemo: boolean("is_demo").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -19,6 +20,7 @@ export const transfersTable = pgTable("transfers", {
   statusIdx: index("transfers_status_idx").on(table.status),
   playerIdx: index("transfers_player_idx").on(table.playerName),
   clubIdx: index("transfers_club_idx").on(table.toClub),
+  apiIdIdx: uniqueIndex("transfers_api_id_idx").on(table.apiId),
 }));
 
 export type Transfer = typeof transfersTable.$inferSelect;

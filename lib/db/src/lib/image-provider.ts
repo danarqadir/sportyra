@@ -41,28 +41,8 @@ export class SportsImageProvider {
     }
   }
 
-  private getFallbackImage(entityType: string, identifier: string | number): LicensedImageResult | null {
-    if (!this.config.fallbackEnabled) return null;
-    const id = typeof identifier === "string" ? identifier : String(identifier);
-    const hash = this.simpleHash(id);
-    const avatarId = (hash % 70) + 1;
-    return {
-      url: `https://i.pravatar.cc/300?img=${avatarId}`,
-      width: 300,
-      height: 300,
-      source: "fallback",
-      license: "placeholder",
-    };
-  }
-
-  private simpleHash(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash |= 0;
-    }
-    return Math.abs(hash);
+  private getFallbackImage(_entityType: string, _identifier: string | number): LicensedImageResult | null {
+    return null;
   }
 }
 
@@ -82,5 +62,3 @@ export function getImageProvider(): SportsImageProvider {
 export function resetImageProvider(): void {
   providerInstance = null;
 }
-
-export type { LicensedImageResult, ImageProviderConfig };

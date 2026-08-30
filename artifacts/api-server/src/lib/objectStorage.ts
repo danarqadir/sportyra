@@ -4,20 +4,44 @@ import { File, Storage } from "@google-cloud/storage";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
-const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: { type: "json", subject_token_field_name: "access_token" },
+function createStorageClient() {
+  const gcpProjectId = process.env.GCP_PROJECT_ID;
+  const gcpServiceAccount = process.env.GCP_SERVICE_ACCOUNT_JSON;
+
+  if (gcpProjectId && gcpServiceAccount) {
+    let credentials: Record<string, unknown>;
+    try {
+      credentials = JSON.parse(Buffer.from(gcpServiceAccount, "base64").toString("utf-8"));
+    } catch {
+      throw new Error("GCP_SERVICE_ACCOUNT_JSON is not valid base64-encoded JSON");
+    }
+    return new Storage({
+      projectId: gcpProjectId,
+      credentials,
+    });
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("GCP_PROJECT_ID and GCP_SERVICE_ACCOUNT_JSON must be set for production storage");
+  }
+
+  return new Storage({
+    credentials: {
+      audience: "replit",
+      subject_token_type: "access_token",
+      token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
+      type: "external_account",
+      credential_source: {
+        url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
+        format: { type: "json", subject_token_field_name: "access_token" },
+      },
+      universe_domain: "googleapis.com",
     },
-    universe_domain: "googleapis.com",
-  },
-  projectId: "",
-});
+    projectId: "",
+  });
+}
+
+const objectStorageClient = createStorageClient();
 
 export class ObjectNotFoundError extends Error {
   constructor() {

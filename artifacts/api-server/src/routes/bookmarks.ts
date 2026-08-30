@@ -10,6 +10,9 @@ const publicRateLimit = rateLimit({ windowMs: 60_000, max: 120 });
 router.get("/bookmarks", requireUser, async (req, res, next) => {
   try {
     const userId = (res.locals.user as { id: number }).id;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(Math.max(1, Number(req.query.pageSize) || 20), 100);
+    const offset = (page - 1) * pageSize;
 
     const [totalRow] = await db
       .select({ total: count() })
@@ -41,18 +44,24 @@ router.get("/bookmarks", requireUser, async (req, res, next) => {
       .from(bookmarksTable)
       .innerJoin(newsTable, eq(bookmarksTable.newsId, newsTable.id))
       .where(eq(bookmarksTable.userId, userId))
-      .orderBy(desc(bookmarksTable.createdAt));
+      .orderBy(desc(bookmarksTable.createdAt))
+      .limit(pageSize)
+      .offset(offset);
 
+    const total = Number(totalRow?.total ?? 0);
     res.json({
       items,
-      total: Number(totalRow?.total ?? 0),
+      page,
+      pageSize,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
     });
   } catch (error) {
     next(error);
   }
 });
 
-router.post("/bookmarks/:newsId", requireUser, async (req, res, next) => {
+router.post("/bookmarks/:newsId", publicRateLimit, requireUser, async (req, res, next) => {
   try {
     const userId = (res.locals.user as { id: number }).id;
     const newsId = Number(req.params.newsId);
@@ -75,7 +84,13 @@ router.post("/bookmarks/:newsId", requireUser, async (req, res, next) => {
     const [bookmark] = await db
       .insert(bookmarksTable)
       .values({ userId, newsId })
+      .onConflictDoNothing()
       .returning({ id: bookmarksTable.id, newsId: bookmarksTable.newsId, createdAt: bookmarksTable.createdAt });
+
+    if (!bookmark) {
+      res.status(409).json({ error: "Already bookmarked" });
+      return;
+    }
 
     res.status(201).json(bookmark);
   } catch (error) {

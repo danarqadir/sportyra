@@ -64,7 +64,8 @@ async function slidingWindowCheck(key: string, windowMs: number, max: number): P
 
 export function rateLimit(options: { windowMs: number; max: number; message?: string }) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const key = `${req.ip || req.socket.remoteAddress || "unknown"}:${req.path}`;
+    const normalizedPath = req.path.replace(/\/\d+/g, "/:id");
+    const key = `${req.ip || req.socket.remoteAddress || "unknown"}:${normalizedPath}`;
     const result = await slidingWindowCheck(key, options.windowMs, options.max);
     if (!result.allowed) {
       res.setHeader("Retry-After", Math.max(1, Math.ceil(result.retryAfterMs / 1000)));
@@ -74,6 +75,8 @@ export function rateLimit(options: { windowMs: number; max: number; message?: st
     next();
   };
 }
+
+export const adminMutationRateLimit = rateLimit({ windowMs: 60_000, max: 30 });
 
 setInterval(() => {
   const now = Date.now();

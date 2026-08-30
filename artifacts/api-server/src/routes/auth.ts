@@ -1,11 +1,17 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { db, usersTable, auditLogTable, sessionsTable, commentsTable, bookmarksTable, entityFollowsTable, notificationsTable, predictionsTable, leaderboardTable, pushSubscriptionsTable, passwordResetsTable, moderationReportsTable } from "@workspace/db";
 import {
   createSession, destroyAllUserSessions, destroySession,
   hashPassword, normalizeEmail, requireUser, verifyPassword,
   generatePasswordResetToken, verifyPasswordResetToken, validateRole,
+  requireAdmin, hasAdminToken, ensureAdminTokenUser,
+  createMfaSession, clearMfaSession,
 } from "../lib/auth";
+import { generateTotpSecret, verifyTotp, otpauthUrl } from "../lib/totp";
+import { recordFailedLogin, isLockedOut, clearFailedLogin, getLockoutRemainingMs } from "../lib/lockout";
+import { enrichEvent } from "../lib/enrichment";
+import { logger } from "../lib/logger";
 import { sendPasswordResetEmail } from "../lib/email";
 import { rateLimit } from "../lib/rate-limit";
 
@@ -21,42 +27,6 @@ const PASSWORD_RULES = {
   minDigit: 1,
   minSpecial: 1,
 };
-
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const LOGIN_MAX_ATTEMPTS = 5;
-const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
-
-function recordFailedLogin(email: string): boolean {
-  const key = email.toLowerCase();
-  const now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (!entry) {
-    loginAttempts.set(key, { count: 1, lockedUntil: 0 });
-    return false;
-  }
-  if (entry.lockedUntil > now) {
-    return true;
-  }
-  entry.count += 1;
-  if (entry.count >= LOGIN_MAX_ATTEMPTS) {
-    entry.lockedUntil = now + LOGIN_LOCKOUT_MS;
-    return true;
-  }
-  return false;
-}
-
-function isLockedOut(email: string): boolean {
-  const key = email.toLowerCase();
-  const entry = loginAttempts.get(key);
-  if (!entry) return false;
-  if (entry.lockedUntil === 0) return false;
-  if (entry.lockedUntil <= Date.now()) { loginAttempts.delete(key); return false; }
-  return true;
-}
-
-function clearFailedLogin(email: string) {
-  loginAttempts.delete(email.toLowerCase());
-}
 
 function validatePasswordStrength(password: string): string | null {
   if (password.length < PASSWORD_RULES.minLength || password.length > PASSWORD_RULES.maxLength) {
@@ -90,7 +60,7 @@ router.post("/auth/register", rateLimit({ windowMs: 15 * 60_000, max: 10 }), asy
     }
     const [user] = await db.insert(usersTable).values({ name, email, passwordHash: hashPassword(password) }).returning();
     await createSession(user.id, res);
-    res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role });
+    res.status(201).json({ message: "Registration successful." });
   } catch (error) {
     next(error);
   }
@@ -104,22 +74,30 @@ router.post("/auth/login", rateLimit({ windowMs: 15 * 60_000, max: 20 }), async 
       res.status(400).json({ error: "Please enter a valid email and password." });
       return;
     }
-    if (isLockedOut(email)) {
+    if (await isLockedOut(email)) {
+      const remainingMs = await getLockoutRemainingMs(email);
+      logger.info({ email, action: "login_locked_out", remainingMs }, "Auth: login attempt while locked out");
       res.status(429).json({ error: "Too many failed attempts. Please try again in 15 minutes." });
       return;
     }
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
     if (!user || !user.active || !verifyPassword(password, user.passwordHash)) {
-      const locked = recordFailedLogin(email);
+      const locked = await recordFailedLogin(email);
+      const enriched = enrichEvent(req);
       if (locked) {
+        logger.warn({ email, action: "login_locked_out", ipHash: enriched.clientIpHash, uaEngine: enriched.userAgentEngine }, "Auth: account locked after failed attempts");
         res.status(429).json({ error: "Account temporarily locked due to too many failed attempts. Please try again in 15 minutes." });
       } else {
+        logger.info({ email, action: "login_failure", ipHash: enriched.clientIpHash, uaEngine: enriched.userAgentEngine }, "Auth: login failed");
         res.status(401).json({ error: "Invalid email or password." });
       }
       return;
     }
-    clearFailedLogin(email);
+    await clearFailedLogin(email);
+    await destroyAllUserSessions(user.id);
     await createSession(user.id, res);
+    const enriched = enrichEvent(req);
+    logger.info({ userId: user.id, action: "login_success", ipHash: enriched.clientIpHash, country: enriched.clientIpCountry }, "Auth: login successful");
     res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
   } catch (error) {
     next(error);
@@ -237,6 +215,163 @@ router.post("/auth/reset-password", rateLimit({ windowMs: 15 * 60_000, max: 5 })
   }
 });
 
+router.post("/auth/mfa/setup", requireAdmin, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
+  try {
+    const admin = res.locals.user as typeof usersTable.$inferSelect;
+    if (admin.mfaEnabled) {
+      res.status(400).json({ error: "MFA is already enabled. Disable it first to generate a new secret." });
+      return;
+    }
+    const secret = generateTotpSecret();
+    await db.update(usersTable).set({ mfaSecret: secret, updatedAt: new Date() }).where(eq(usersTable.id, admin.id));
+    await db.insert(auditLogTable).values({
+      userId: admin.id,
+      action: "auth.mfa_setup_started",
+      targetType: "user",
+      targetId: admin.id,
+      details: "TOTP MFA setup initiated",
+    }).catch(() => {});
+    res.json({
+      secret,
+      otpauthUrl: otpauthUrl(secret, admin.email),
+      issuer: "Sportyra",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/auth/mfa/verify", requireAdmin, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
+  try {
+    const admin = res.locals.user as typeof usersTable.$inferSelect;
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    if (!admin.mfaSecret) {
+      res.status(400).json({ error: "No MFA secret configured. Call /auth/mfa/setup first." });
+      return;
+    }
+    if (!verifyTotp(admin.mfaSecret, code)) {
+      res.status(401).json({ error: "Invalid verification code." });
+      return;
+    }
+    await db.update(usersTable).set({ mfaEnabled: true, updatedAt: new Date() }).where(eq(usersTable.id, admin.id));
+    await createMfaSession(admin.id, res);
+    await db.insert(auditLogTable).values({
+      userId: admin.id,
+      action: "auth.mfa_enabled",
+      targetType: "user",
+      targetId: admin.id,
+      details: "TOTP MFA enabled",
+    }).catch(() => {});
+    res.json({ enabled: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/auth/mfa/authenticate", rateLimit({ windowMs: 15 * 60_000, max: 20 }), async (req, res, next): Promise<void> => {
+  try {
+    if (!hasAdminToken(req)) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const ok = await ensureAdminTokenUser(res);
+    if (!ok) {
+      res.status(503).json({ error: "No admin user is provisioned on the server" });
+      return;
+    }
+    const admin = res.locals.user as typeof usersTable.$inferSelect;
+    if (!admin.mfaEnabled || !admin.mfaSecret) {
+      res.status(400).json({ error: "MFA is not enabled for the admin account." });
+      return;
+    }
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    if (!verifyTotp(admin.mfaSecret, code)) {
+      res.status(401).json({ error: "Invalid verification code." });
+      return;
+    }
+    await createMfaSession(admin.id, res);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/auth/mfa/disable", requireAdmin, rateLimit({ windowMs: 15 * 60_000, max: 5 }), async (req, res, next): Promise<void> => {
+  try {
+    const admin = res.locals.user as typeof usersTable.$inferSelect;
+    if (!admin.mfaEnabled || !admin.mfaSecret) {
+      res.status(400).json({ error: "MFA is not enabled." });
+      return;
+    }
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    if (!verifyTotp(admin.mfaSecret, code)) {
+      res.status(401).json({ error: "Invalid verification code." });
+      return;
+    }
+    await db.update(usersTable).set({ mfaEnabled: false, mfaSecret: null, updatedAt: new Date() }).where(eq(usersTable.id, admin.id));
+    clearMfaSession(res);
+    await db.insert(auditLogTable).values({
+      userId: admin.id,
+      action: "auth.mfa_disabled",
+      targetType: "user",
+      targetId: admin.id,
+      details: "TOTP MFA disabled",
+    }).catch(() => {});
+    res.json({ enabled: false });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/auth/mfa/status", requireAdmin, async (req, res, next): Promise<void> => {
+  try {
+    const admin = res.locals.user as typeof usersTable.$inferSelect;
+    res.json({ enabled: admin.mfaEnabled });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/auth/account", requireUser, rateLimit({ windowMs: 15 * 60_000, max: 3 }), async (req, res, next): Promise<void> => {
+  try {
+    const user = res.locals.user as typeof usersTable.$inferSelect;
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+    if (!password) {
+      res.status(400).json({ error: "Password confirmation required" });
+      return;
+    }
+    if (!verifyPassword(password, user.passwordHash)) {
+      res.status(401).json({ error: "Incorrect password" });
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      // Delete dependent data
+      await tx.delete(sessionsTable).where(eq(sessionsTable.userId, user.id));
+      await tx.delete(passwordResetsTable).where(eq(passwordResetsTable.userId, user.id));
+      await tx.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.userId, user.id));
+      await tx.delete(bookmarksTable).where(eq(bookmarksTable.userId, user.id));
+      await tx.delete(entityFollowsTable).where(eq(entityFollowsTable.userId, user.id));
+      await tx.delete(notificationsTable).where(eq(notificationsTable.userId, user.id));
+      await tx.delete(predictionsTable).where(eq(predictionsTable.userId, user.id));
+      await tx.delete(leaderboardTable).where(eq(leaderboardTable.userId, user.id));
+      // Anonymize comments (keep content but remove PII)
+      await tx.update(commentsTable).set({ userId: null, authorName: "Deleted User", authorEmail: "deleted@local" }).where(eq(commentsTable.userId, user.id));
+      // Anonymize moderation reports
+      await tx.update(moderationReportsTable).set({ reporterId: null }).where(eq(moderationReportsTable.reporterId, user.id));
+      await tx.update(moderationReportsTable).set({ reviewedBy: null }).where(eq(moderationReportsTable.reviewedBy, user.id));
+      // Delete user
+      await tx.delete(usersTable).where(eq(usersTable.id, user.id));
+    });
+
+    // Clear session cookies
+    destroySession(req, res);
+    res.json({ message: "Account deleted successfully" });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/auth/users", requireUser, async (req, res, next): Promise<void> => {
   try {
     const currentUser = res.locals.user as typeof usersTable.$inferSelect;
@@ -244,7 +379,7 @@ router.get("/auth/users", requireUser, async (req, res, next): Promise<void> => 
       res.status(403).json({ error: "Admin access required" });
       return;
     }
-    const users = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, active: usersTable.active, createdAt: usersTable.createdAt }).from(usersTable);
+    const users = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, active: usersTable.active, mfaEnabled: usersTable.mfaEnabled, createdAt: usersTable.createdAt }).from(usersTable);
     res.json(users);
   } catch (error) {
     next(error);
@@ -277,6 +412,13 @@ router.patch("/auth/users/:id/role", requireUser, rateLimit({ windowMs: 15 * 60_
       res.status(404).json({ error: "User not found" });
       return;
     }
+    await db.insert(auditLogTable).values({
+      userId: currentUser.id,
+      action: "user.role_changed",
+      targetType: "user",
+      targetId: updated.id,
+      details: `Role changed from ${updated.role} to ${role}`,
+    }).catch(() => {});
     res.json({ id: updated.id, name: updated.name, email: updated.email, role: updated.role, active: updated.active });
   } catch (error) {
     next(error);
@@ -309,6 +451,13 @@ router.patch("/auth/users/:id/active", requireUser, rateLimit({ windowMs: 15 * 6
       res.status(404).json({ error: "User not found" });
       return;
     }
+    await db.insert(auditLogTable).values({
+      userId: currentUser.id,
+      action: active ? "user.activated" : "user.deactivated",
+      targetType: "user",
+      targetId: updated.id,
+      details: active ? "Account activated" : "Account deactivated",
+    }).catch(() => {});
     if (!active) await destroyAllUserSessions(targetId);
     res.json({ id: updated.id, name: updated.name, email: updated.email, role: updated.role, active: updated.active });
   } catch (error) {

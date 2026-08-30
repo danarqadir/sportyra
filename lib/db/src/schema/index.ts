@@ -17,3 +17,6 @@ export * from "./transfers";
 export * from "./predictions";
 export * from "./team-pages";
 export * from "./partners";
+export * from "./entity-follows";
+export * from "./monetization";
+export * from "./fraud-monitoring";

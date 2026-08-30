@@ -10,6 +10,8 @@ import {
 import { eq, desc, or, ilike, and, asc, sql } from "drizzle-orm";
 import { competitionsTable } from "@workspace/db";
 import { rateLimit } from "../lib/rate-limit";
+import { requireAdmin } from "../lib/auth";
+import { enrichTransfers } from "../lib/transfer-images";
 
 const publicRateLimit = rateLimit({ windowMs: 60_000, max: 120 });
 
@@ -94,7 +96,7 @@ router.get("/team-pages/standings", publicRateLimit, async (req, res, next) => {
         form: teamPagesTable.form,
       })
       .from(teamPagesTable)
-      .where(ilike(teamPagesTable.league, matchedCompetition ? matchedCompetition.name : league))
+      .where(and(ilike(teamPagesTable.league, matchedCompetition ? matchedCompetition.name : league), eq(teamPagesTable.isDemo, false)))
       .orderBy(
         asc(sql`COALESCE(${teamPagesTable.leaguePosition}, 9999)`),
         desc(sql`COALESCE(${teamPagesTable.points}, 0)`),
@@ -137,10 +139,22 @@ router.get("/team-pages/leagues", publicRateLimit, async (_req, res, next) => {
         teamCount: sql<number>`COUNT(*)::int`,
       })
       .from(teamPagesTable)
+      .where(eq(teamPagesTable.isDemo, false))
       .groupBy(teamPagesTable.league)
       .orderBy(asc(teamPagesTable.league));
 
-    res.json({ items: rows });
+    const competitions = await db
+      .select({ name: competitionsTable.name, logoUrl: competitionsTable.logoUrl })
+      .from(competitionsTable)
+      .where(eq(competitionsTable.isDemo, false));
+    const logoBy = new Map(competitions.map((c) => [normalizeLeague(c.name), c.logoUrl]));
+
+    res.json({
+      items: rows.map((r) => ({
+        ...r,
+        logoUrl: logoBy.get(normalizeLeague(r.league)) ?? null,
+      })),
+    });
   } catch (error) {
     next(error);
   }
@@ -204,21 +218,25 @@ router.get("/team-pages/:slug", publicRateLimit, async (req, res, next) => {
         nationality: playersTable.nationality,
         position: playersTable.position,
         shirtNumber: playersTable.shirtNumber,
+        photoUrl: playersTable.photoUrl,
         goals: playersTable.goals,
         assists: playersTable.assists,
         appearances: playersTable.appearances,
       })
       .from(playersTable)
-      .where(ilike(playersTable.club, teamName))
+      .where(and(ilike(playersTable.club, teamName), eq(playersTable.isDemo, false)))
       .orderBy(asc(playersTable.position), asc(playersTable.shirtNumber));
 
     const recentMatches = await db
       .select()
       .from(matchesTable)
       .where(
-        or(
-          ilike(matchesTable.homeTeamName, teamName),
-          ilike(matchesTable.awayTeamName, teamName),
+        and(
+          eq(matchesTable.isDemo, false),
+          or(
+            ilike(matchesTable.homeTeamName, teamName),
+            ilike(matchesTable.awayTeamName, teamName),
+          ),
         ),
       )
       .orderBy(desc(matchesTable.matchDate))
@@ -229,6 +247,7 @@ router.get("/team-pages/:slug", publicRateLimit, async (req, res, next) => {
       .from(matchesTable)
       .where(
         and(
+          eq(matchesTable.isDemo, false),
           eq(matchesTable.status, "scheduled"),
           or(
             ilike(matchesTable.homeTeamName, teamName),
@@ -243,13 +262,17 @@ router.get("/team-pages/:slug", publicRateLimit, async (req, res, next) => {
       .select()
       .from(transfersTable)
       .where(
-        or(
-          ilike(transfersTable.fromClub, teamName),
-          ilike(transfersTable.toClub, teamName),
+        and(
+          eq(transfersTable.isDemo, false),
+          or(
+            ilike(transfersTable.fromClub, teamName),
+            ilike(transfersTable.toClub, teamName),
+          ),
         ),
       )
       .orderBy(desc(transfersTable.createdAt))
       .limit(8);
+    const enrichedTransfers = await enrichTransfers(relatedTransfers);
 
     const relatedNews = await db
       .select({
@@ -289,13 +312,28 @@ router.get("/team-pages/:slug", publicRateLimit, async (req, res, next) => {
       squad,
       recentMatches,
       upcomingMatches,
-      relatedTransfers,
+      relatedTransfers: enrichedTransfers,
       relatedNews,
       form,
     });
   } catch (error) {
     next(error);
   }
+});
+
+router.patch("/team-pages/:id", requireAdmin, async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid team page id" }); return; }
+    const allowed = ["teamId", "name", "shortName", "country", "league", "badge", "description", "founded", "stadium", "capacity", "leaguePosition", "points", "played", "won", "drawn", "lost", "goalsFor", "goalsAgainst", "form"];
+    const updateData: Record<string, unknown> = {};
+    for (const key of allowed) { if (req.body[key] !== undefined) updateData[key] = req.body[key]; }
+    if (Object.keys(updateData).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+    updateData.updatedAt = new Date();
+    const [team] = await db.update(teamPagesTable).set(updateData).where(eq(teamPagesTable.id, id)).returning();
+    if (!team) { res.status(404).json({ error: "Team page not found" }); return; }
+    res.json(team);
+  } catch (error) { next(error); }
 });
 
 export default router;

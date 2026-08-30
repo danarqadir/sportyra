@@ -8,6 +8,9 @@ const router = Router();
 router.get("/user/notifications", requireUser, async (req, res, next) => {
   try {
     const user = res.locals.user as { id: number };
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(Math.max(1, Number(req.query.pageSize) || 20), 100);
+    const offset = (page - 1) * pageSize;
     const conditions = [eq(notificationsTable.userId, user.id)];
 
     if (req.query.unread === "true") {
@@ -29,7 +32,9 @@ router.get("/user/notifications", requireUser, async (req, res, next) => {
         })
         .from(notificationsTable)
         .where(whereClause)
-        .orderBy(desc(notificationsTable.createdAt)),
+        .orderBy(desc(notificationsTable.createdAt))
+        .limit(pageSize)
+        .offset(offset),
       db.select({ total: count() }).from(notificationsTable).where(whereClause),
       db
         .select({ total: count() })
@@ -40,7 +45,14 @@ router.get("/user/notifications", requireUser, async (req, res, next) => {
     const total = Number(totalRows[0]?.total ?? 0);
     const unreadCount = Number(unreadRows[0]?.total ?? 0);
 
-    res.json({ items: rows, total, unreadCount });
+    res.json({
+      items: rows,
+      page,
+      pageSize,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+      unreadCount,
+    });
   } catch (error) {
     next(error);
   }

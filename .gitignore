@@ -43,9 +43,18 @@ Thumbs.db
 
 # Logs
 *.log
+*.err
+*.pid
 
 # Credentials files
 pgpw.txt
+check-db.js
+
+# Local start helper containing credentials (do not commit)
+start-server.ps1
+
+# Generated drizzle metadata
+lib/db/drizzle/
 
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md

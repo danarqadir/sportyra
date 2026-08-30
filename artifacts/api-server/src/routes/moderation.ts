@@ -2,10 +2,13 @@ import { Router } from "express";
 import { db, moderationReportsTable, auditLogTable } from "@workspace/db";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { requireUser, hasAdminToken, requireAdminOrRole } from "../lib/auth";
+import { rateLimit, adminMutationRateLimit } from "../lib/rate-limit";
+import { sanitizeHtml } from "../lib/sanitize";
 
 const router = Router();
+const reportRateLimit = rateLimit({ windowMs: 60_000, max: 5 });
 
-router.post("/moderation/report", requireUser, async (req, res, next) => {
+router.post("/moderation/report", reportRateLimit, requireUser, async (req, res, next) => {
   try {
     const { targetType, targetId, reason, details } = req.body as {
       targetType?: string;
@@ -27,8 +30,27 @@ router.post("/moderation/report", requireUser, async (req, res, next) => {
       return;
     }
 
+    const trimmedReason = reason.trim().slice(0, 200);
+    const trimmedDetails = details ? sanitizeHtml(details.trim().slice(0, 2000)) : null;
+
     const user = res.locals.user as { id: number };
     const safeTargetId = targetId as number;
+
+    const [existing] = await db
+      .select({ id: moderationReportsTable.id })
+      .from(moderationReportsTable)
+      .where(and(
+        eq(moderationReportsTable.reporterId, user.id),
+        eq(moderationReportsTable.targetType, targetType),
+        eq(moderationReportsTable.targetId, safeTargetId),
+        eq(moderationReportsTable.status, "pending"),
+      ))
+      .limit(1);
+
+    if (existing) {
+      res.status(200).json({ id: existing.id, status: "pending", createdAt: new Date(), alreadyReported: true });
+      return;
+    }
 
     const [report] = await db
       .insert(moderationReportsTable)
@@ -36,8 +58,8 @@ router.post("/moderation/report", requireUser, async (req, res, next) => {
         reporterId: user.id,
         targetType,
         targetId: safeTargetId,
-        reason,
-        details: details ?? null,
+        reason: trimmedReason,
+        details: trimmedDetails,
       })
       .returning();
 
@@ -81,7 +103,7 @@ router.get("/admin/moderation", requireAdminOrRole("admin", "editor"), async (re
   }
 });
 
-router.patch("/admin/moderation/:reportId", requireAdminOrRole("admin", "editor"), async (req, res, next) => {
+router.patch("/admin/moderation/:reportId", requireAdminOrRole("admin", "editor"), adminMutationRateLimit, async (req, res, next) => {
   try {
     const reportId = Number(req.params.reportId);
     if (!Number.isInteger(reportId) || reportId <= 0) {
@@ -89,13 +111,20 @@ router.patch("/admin/moderation/:reportId", requireAdminOrRole("admin", "editor"
       return;
     }
 
-    const { status, resolution } = req.body as { status?: string; resolution?: string };
+    const { status, resolution } = req.body as { status?: unknown; resolution?: unknown };
 
-    if (status !== "reviewed" && status !== "dismissed") {
+    if (typeof status !== "string" || (status !== "reviewed" && status !== "dismissed")) {
       res.status(400).json({ error: "status must be 'reviewed' or 'dismissed'" });
       return;
     }
+    if (resolution !== undefined && resolution !== null) {
+      if (typeof resolution !== "string") {
+        res.status(400).json({ error: "resolution must be a string" });
+        return;
+      }
+    }
 
+    const trimmedResolution = typeof resolution === "string" ? resolution.trim().slice(0, 2000) : null;
     const user = res.locals.user as { id: number };
 
     const [existing] = await db
@@ -108,11 +137,16 @@ router.patch("/admin/moderation/:reportId", requireAdminOrRole("admin", "editor"
       return;
     }
 
+    if (existing.status !== "pending") {
+      res.status(400).json({ error: "Report has already been reviewed" });
+      return;
+    }
+
     const [updated] = await db
       .update(moderationReportsTable)
       .set({
         status,
-        resolution: resolution ?? null,
+        resolution: trimmedResolution,
         reviewedBy: user.id,
         reviewedAt: new Date(),
       })
@@ -124,7 +158,7 @@ router.patch("/admin/moderation/:reportId", requireAdminOrRole("admin", "editor"
       action: `moderation_${status}`,
       targetType: existing.targetType,
       targetId: existing.targetId,
-      details: resolution ?? null,
+      details: trimmedResolution,
     });
 
     res.json(updated);

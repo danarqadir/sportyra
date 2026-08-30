@@ -6,6 +6,7 @@ export const sessionsTable = pgTable(
     id: serial("id").primaryKey(),
     userId: integer("user_id").notNull(),
     tokenHash: text("token_hash").notNull(),
+    purpose: text("purpose").notNull().default("login"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -1,5 +1,7 @@
-import { boolean, decimal, index, integer, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, decimal, index, integer, pgTable, serial, text, timestamp, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+
+export const partnerStatusEnum = pgEnum("partner_status", ["pending", "approved", "rejected", "suspended", "active"]);
 
 export const partnersTable = pgTable(
   "partners",
@@ -11,11 +13,29 @@ export const partnersTable = pgTable(
     referralCode: text("referral_code").notNull(),
     website: text("website"),
     socialHandle: text("social_handle"),
-    status: text("status").notNull().default("active"),
+    status: partnerStatusEnum("status").notNull().default("pending"),
     commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).notNull().default("10.00"),
     totalClicks: integer("total_clicks").notNull().default(0),
     totalEarnings: decimal("total_earnings", { precision: 12, scale: 2 }).notNull().default("0.00"),
     paidEarnings: decimal("paid_earnings", { precision: 12, scale: 2 }).notNull().default("0.00"),
+    bio: text("bio"),
+    avatar: text("avatar"),
+    facebook: text("facebook"),
+    instagram: text("instagram"),
+    tiktok: text("tiktok"),
+    youtube: text("youtube"),
+    phone: text("phone"),
+    address: text("address"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedBy: integer("approved_by"),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    rejectedBy: integer("rejected_by"),
+    rejectedReason: text("rejected_reason"),
+    suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+    suspendedBy: integer("suspended_by"),
+    suspendedReason: text("suspended_reason"),
+    secretHash: text("secret_hash"),
+    secretPrefix: text("secret_prefix"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -23,6 +43,7 @@ export const partnersTable = pgTable(
     codeUnique: uniqueIndex("partners_referral_code_unique").on(table.referralCode),
     emailIdx: uniqueIndex("partners_email_unique").on(table.email),
     userIdx: index("partners_user_idx").on(table.userId),
+    statusIdx: index("partners_status_idx").on(table.status),
   }),
 );
 
@@ -36,6 +57,9 @@ export const referralLinksTable = pgTable(
     label: text("label"),
     active: boolean("active").notNull().default(true),
     clickCount: integer("click_count").notNull().default(0),
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -77,6 +101,10 @@ export const referralClicksTable = pgTable(
     userAgent: text("user_agent"),
     referer: text("referer"),
     fingerprint: text("fingerprint"),
+    targetUrl: text("target_url"),
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -97,10 +125,12 @@ export const payoutsTable = pgTable(
     reference: text("reference"),
     notes: text("notes"),
     status: text("status").notNull().default("pending"),
+    idempotencyKey: text("idempotency_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     partnerIdx: index("payouts_partner_idx").on(table.partnerId),
+    idempotencyKeyIdx: index("payouts_idempotency_key_idx").on(table.idempotencyKey),
   }),
 );
 

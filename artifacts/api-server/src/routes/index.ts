@@ -18,6 +18,13 @@ import transfersRouter from "./transfers";
 import predictionsRouter from "./predictions";
 import teamPagesRouter from "./team-pages";
 import partnersRouter from "./partners";
+import partnerNewsRouter from "./partner-news";
+import followsRouter from "./follows";
+import contentLabelsRouter from "./content-labels";
+import adsRouter from "./ads";
+import campaignsRouter from "./campaigns";
+import monetizationRouter from "./monetization";
+import sportsSyncRouter from "./sports-sync";
 
 const router: IRouter = Router();
 
@@ -40,5 +47,12 @@ router.use(transfersRouter);
 router.use(predictionsRouter);
 router.use(teamPagesRouter);
 router.use(partnersRouter);
+router.use(partnerNewsRouter);
+router.use(followsRouter);
+router.use(contentLabelsRouter);
+router.use(adsRouter);
+router.use(campaignsRouter);
+router.use(monetizationRouter);
+router.use(sportsSyncRouter);
 
 export default router;

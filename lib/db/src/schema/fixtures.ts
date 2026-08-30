@@ -1,4 +1,4 @@
-import { integer, pgTable, serial, text, timestamp, index } from "drizzle-orm/pg-core";
+import { integer, pgTable, serial, text, timestamp, index, uniqueIndex, boolean } from "drizzle-orm/pg-core";
 
 export const competitionsTable = pgTable("competitions", {
   id: serial("id").primaryKey(),
@@ -8,8 +8,11 @@ export const competitionsTable = pgTable("competitions", {
   sport: text("sport").notNull().default("football"),
   logoUrl: text("logo_url"),
   apiId: text("api_id"),
+  isDemo: boolean("is_demo").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  apiIdIdx: uniqueIndex("competitions_api_id_idx").on(table.apiId),
+}));
 
 export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
@@ -19,8 +22,11 @@ export const teamsTable = pgTable("teams", {
   logoUrl: text("logo_url"),
   sport: text("sport").notNull().default("football"),
   apiId: text("api_id"),
+  isDemo: boolean("is_demo").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  apiIdIdx: uniqueIndex("teams_api_id_idx").on(table.apiId),
+}));
 
 export const fixturesTable = pgTable("fixtures", {
   id: serial("id").primaryKey(),
@@ -42,6 +48,7 @@ export const fixturesTable = pgTable("fixtures", {
   matchDateIdx: index("fixtures_match_date_idx").on(table.matchDate),
   statusIdx: index("fixtures_status_idx").on(table.status),
   competitionIdx: index("fixtures_competition_idx").on(table.competitionId),
+  apiIdIdx: uniqueIndex("fixtures_api_id_idx").on(table.apiId),
 }));
 
 export type Competition = typeof competitionsTable.$inferSelect;

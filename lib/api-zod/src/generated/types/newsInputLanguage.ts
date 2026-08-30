@@ -12,4 +12,5 @@ export type NewsInputLanguage = typeof NewsInputLanguage[keyof typeof NewsInputL
 export const NewsInputLanguage = {
   en: 'en',
   ar: 'ar',
+  ku: 'ku',
 } as const;

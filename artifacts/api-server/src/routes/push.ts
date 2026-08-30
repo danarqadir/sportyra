@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { eq, and, gt } from "drizzle-orm";
 import { db, pushSubscriptionsTable } from "@workspace/db";
-import { requireUser } from "../lib/auth";
+import { requireUser, getSessionUser } from "../lib/auth";
 import { rateLimit } from "../lib/rate-limit";
 
 const router = Router();
@@ -15,9 +15,19 @@ router.post("/push/subscribe", rateLimit({ windowMs: 60_000, max: 10 }), async (
       res.status(400).json({ error: "Missing required push subscription fields." });
       return;
     }
+    try {
+      const parsed = new URL(endpoint);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "wss:") {
+        res.status(400).json({ error: "Push endpoint must use HTTPS or WSS protocol." });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: "Invalid push endpoint URL." });
+      return;
+    }
     let userId: number | null = null;
     try {
-      const session = await (await import("../lib/auth")).getSessionUser(req as any);
+      const session = await getSessionUser(req);
       if (session) userId = session.user.id;
     } catch { /* optional */ }
 

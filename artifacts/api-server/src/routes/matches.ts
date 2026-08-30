@@ -1,19 +1,29 @@
 import { Router, type IRouter } from "express";
 import { db, matchesTable, matchEventsTable, matchStatsTable, matchLineupsTable } from "@workspace/db";
-import { eq, desc, asc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, asc, and, gte, lte, sql, or, ilike } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
+import { MatchCreate, MatchUpdate, MatchEventCreate } from "../lib/validation";
+import { adminMutationRateLimit } from "../lib/rate-limit";
 
 const router: IRouter = Router();
 
 router.get("/matches", async (req, res, next) => {
   try {
-    const { status, filter, limit: rawLimit } = req.query as Record<string, string | undefined>;
-    const limit = Math.min(Number(rawLimit) || 20, 50);
-    const filters = [];
+    const { status, filter, search, limit: rawLimit } = req.query as Record<string, string | undefined>;
+    const limit = Math.max(1, Math.min(Number(rawLimit) || 20, 50));
+    const filters = [eq(matchesTable.isDemo, false)];
     if (filter === "live") filters.push(eq(matchesTable.status, "live"));
     else if (filter === "upcoming") filters.push(eq(matchesTable.status, "scheduled"));
     else if (filter === "finished") filters.push(eq(matchesTable.status, "finished"));
     else if (status) filters.push(eq(matchesTable.status, status));
+    if (search) {
+      filters.push(or(
+        ilike(matchesTable.homeTeamName, `%${search}%`),
+        ilike(matchesTable.awayTeamName, `%${search}%`),
+        ilike(matchesTable.venue, `%${search}%`),
+        ilike(matchesTable.competitionName, `%${search}%`),
+      )!);
+    }
     const where = filters.length ? and(...filters) : undefined;
     const rows = await db.select().from(matchesTable).where(where).orderBy(desc(matchesTable.matchDate)).limit(limit);
     res.json({ items: rows, total: rows.length });
@@ -33,27 +43,34 @@ router.get("/matches/:id", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post("/matches", requireAdmin, async (req, res, next) => {
+router.post("/matches", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
   try {
-    const { homeTeamName, awayTeamName, homeTeamLogo, awayTeamLogo, matchDate, status, venue, competitionName, competitionLogo, homeScore, awayScore, minute } = req.body;
-    if (!homeTeamName || !awayTeamName || !matchDate) { res.status(400).json({ error: "homeTeamName, awayTeamName, and matchDate are required" }); return; }
+    const parsed = MatchCreate.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.issues.map((i) => i.message) });
+      return;
+    }
+    const { matchDate, ...fields } = parsed.data;
     const [match] = await db.insert(matchesTable).values({
-      homeTeamName, awayTeamName, homeTeamLogo: homeTeamLogo ?? null, awayTeamLogo: awayTeamLogo ?? null,
-      matchDate: new Date(matchDate), status: status ?? "scheduled", venue: venue ?? null,
-      competitionName: competitionName ?? null, competitionLogo: competitionLogo ?? null,
-      homeScore: homeScore ?? 0, awayScore: awayScore ?? 0, minute: minute ?? null,
+      ...fields,
+      matchDate: new Date(matchDate),
+      homeScore: fields.homeScore ?? 0,
+      awayScore: fields.awayScore ?? 0,
     }).returning();
     res.status(201).json(match);
   } catch (error) { next(error); }
 });
 
-router.patch("/matches/:id", requireAdmin, async (req, res, next) => {
+router.patch("/matches/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid match id" }); return; }
-    const allowed = ["homeScore", "awayScore", "status", "minute", "venue"];
-    const updateData: Record<string, unknown> = {};
-    for (const key of allowed) { if (req.body[key] !== undefined) updateData[key] = req.body[key]; }
+    const parsed = MatchUpdate.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.issues.map((i) => i.message) });
+      return;
+    }
+    const updateData: Record<string, unknown> = { ...parsed.data };
     if (Object.keys(updateData).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
     updateData.updatedAt = new Date();
     const [match] = await db.update(matchesTable).set(updateData).where(eq(matchesTable.id, id)).returning();
@@ -62,25 +79,32 @@ router.patch("/matches/:id", requireAdmin, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post("/matches/:id/events", requireAdmin, async (req, res, next) => {
+router.post("/matches/:id/events", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
   try {
     const matchId = Number(req.params.id);
-    const { eventType, minute, playerName, teamSide, detail } = req.body;
-    if (!eventType) { res.status(400).json({ error: "eventType is required" }); return; }
-    const [event] = await db.insert(matchEventsTable).values({ matchId, eventType, minute: minute ?? null, playerName: playerName ?? null, teamSide: teamSide ?? null, detail: detail ?? null }).returning();
+    if (!Number.isInteger(matchId) || matchId <= 0) { res.status(400).json({ error: "Invalid match id" }); return; }
+    const parsed = MatchEventCreate.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.issues.map((i) => i.message) });
+      return;
+    }
+    const [event] = await db.insert(matchEventsTable).values({ matchId, ...parsed.data }).returning();
     res.status(201).json(event);
   } catch (error) { next(error); }
 });
 
-router.delete("/matches/:id", requireAdmin, async (req, res, next) => {
+router.delete("/matches/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid match id" }); return; }
-    await db.delete(matchEventsTable).where(eq(matchEventsTable.matchId, id));
-    await db.delete(matchStatsTable).where(eq(matchStatsTable.matchId, id));
-    await db.delete(matchLineupsTable).where(eq(matchLineupsTable.matchId, id));
-    const [match] = await db.delete(matchesTable).where(eq(matchesTable.id, id)).returning();
-    if (!match) { res.status(404).json({ error: "Match not found" }); return; }
+    const result = await db.transaction(async (tx) => {
+      await tx.delete(matchEventsTable).where(eq(matchEventsTable.matchId, id));
+      await tx.delete(matchStatsTable).where(eq(matchStatsTable.matchId, id));
+      await tx.delete(matchLineupsTable).where(eq(matchLineupsTable.matchId, id));
+      const [match] = await tx.delete(matchesTable).where(eq(matchesTable.id, id)).returning();
+      return match;
+    });
+    if (!result) { res.status(404).json({ error: "Match not found" }); return; }
     res.sendStatus(204);
   } catch (error) { next(error); }
 });

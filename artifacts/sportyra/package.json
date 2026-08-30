@@ -76,6 +76,8 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "dompurify": "^3.4.13"
+    "@workspace/db": "workspace:*",
+    "dompurify": "^3.4.13",
+    "@sentry/react": "^9.0.0"
   }
 }

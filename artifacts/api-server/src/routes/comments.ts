@@ -9,7 +9,7 @@ import { db, commentsTable, newsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, count, sql, asc } from "drizzle-orm";
 import { requireUser, hasAdminToken, requireAdminOrRole, getSessionUser } from "../lib/auth";
 import { sanitizeHtml } from "../lib/sanitize";
-import { rateLimit } from "../lib/rate-limit";
+import { rateLimit, adminMutationRateLimit } from "../lib/rate-limit";
 
 const router: IRouter = Router();
 const publicRateLimit = rateLimit({ windowMs: 60_000, max: 60 });
@@ -44,19 +44,35 @@ router.get("/comments/:newsId", publicRateLimit, async (req, res, next) => {
       conditions.push(sql`${commentsTable.parentId} IS NULL`);
     }
 
-    const rows = await db
-      .select({
-        id: commentsTable.id,
-        userId: commentsTable.userId,
-        authorName: commentsTable.authorName,
-        body: commentsTable.body,
-        createdAt: commentsTable.createdAt,
-      })
-      .from(commentsTable)
-      .where(and(...conditions))
-      .orderBy(asc(commentsTable.createdAt));
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(Math.max(1, Number(req.query.pageSize) || 50), 200);
+    const offset = (page - 1) * pageSize;
 
-    res.json({ items: rows });
+    const [rows, totalRows] = await Promise.all([
+      db
+        .select({
+          id: commentsTable.id,
+          userId: commentsTable.userId,
+          authorName: commentsTable.authorName,
+          body: commentsTable.body,
+          createdAt: commentsTable.createdAt,
+        })
+        .from(commentsTable)
+        .where(and(...conditions))
+        .orderBy(asc(commentsTable.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      db.select({ total: count() }).from(commentsTable).where(and(...conditions)),
+    ]);
+
+    const total = Number(totalRows[0]?.total ?? 0);
+    res.json({
+      items: rows,
+      page,
+      pageSize,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+    });
   } catch (error) {
     next(error);
   }
@@ -103,6 +119,17 @@ router.post("/comments/:newsId", publicRateLimit, async (req, res, next) => {
       return;
     }
 
+    if (parentId != null) {
+      const [parentComment] = await db
+        .select({ id: commentsTable.id, newsId: commentsTable.newsId })
+        .from(commentsTable)
+        .where(eq(commentsTable.id, parentId));
+      if (!parentComment || parentComment.newsId !== newsId) {
+        res.status(400).json({ error: "Invalid parentId: parent comment does not belong to this article" });
+        return;
+      }
+    }
+
     const session = await getSessionUser(req as Request);
     const userId = session?.user?.id ?? null;
 
@@ -115,6 +142,7 @@ router.post("/comments/:newsId", publicRateLimit, async (req, res, next) => {
         authorName,
         authorEmail,
         parentId: parentId ?? null,
+        approved: userId !== null, // guest comments require moderation
       })
       .returning();
 
@@ -132,24 +160,26 @@ router.delete("/comments/:commentId", requireUserOrAdmin, async (req, res, next)
       return;
     }
 
-    const [existing] = await db
-      .select()
-      .from(commentsTable)
-      .where(eq(commentsTable.id, commentId));
-
-    if (!existing) {
-      res.status(404).json({ error: "Comment not found" });
-      return;
-    }
-
     const user = res.locals.user as typeof usersTable.$inferSelect | undefined;
     const isAdmin = hasAdminToken(req as Request);
-    if (!isAdmin && existing.userId !== user?.id) {
-      res.status(403).json({ error: "Not authorized to delete this comment" });
-      return;
-    }
 
-    await db.delete(commentsTable).where(eq(commentsTable.id, commentId));
+    const result = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(commentsTable)
+        .where(eq(commentsTable.id, commentId))
+        .for("update");
+
+      if (!existing) return { notFound: true };
+
+      if (!isAdmin && existing.userId !== user?.id) return { notAuthorized: true };
+
+      await tx.delete(commentsTable).where(eq(commentsTable.id, commentId));
+      return { success: true };
+    });
+
+    if (result.notFound) { res.status(404).json({ error: "Comment not found" }); return; }
+    if (result.notAuthorized) { res.status(403).json({ error: "Not authorized to delete this comment" }); return; }
     res.sendStatus(204);
   } catch (error) {
     next(error);
@@ -170,6 +200,8 @@ router.post("/comments/:commentId/report", publicRateLimit, async (req, res, nex
       return;
     }
 
+    const trimmedReason = reason.trim().slice(0, 500);
+
     const [existing] = await db
       .select()
       .from(commentsTable)
@@ -180,9 +212,14 @@ router.post("/comments/:commentId/report", publicRateLimit, async (req, res, nex
       return;
     }
 
+    if (existing.reported) {
+      res.json({ success: true });
+      return;
+    }
+
     await db
       .update(commentsTable)
-      .set({ reported: true, reportReason: reason, updatedAt: new Date() })
+      .set({ reported: true, reportReason: sanitizeHtml(trimmedReason), updatedAt: new Date() })
       .where(eq(commentsTable.id, commentId));
 
     res.json({ success: true });
@@ -243,7 +280,7 @@ router.get("/admin/comments", requireAdminOrRole("admin", "editor"), async (req,
   }
 });
 
-router.patch("/admin/comments/:commentId", requireAdminOrRole("admin", "editor"), async (req, res, next) => {
+router.patch("/admin/comments/:commentId", requireAdminOrRole("admin", "editor"), adminMutationRateLimit, async (req, res, next) => {
   try {
     const commentId = Number(req.params.commentId);
     if (!Number.isInteger(commentId) || commentId <= 0) {
@@ -251,11 +288,17 @@ router.patch("/admin/comments/:commentId", requireAdminOrRole("admin", "editor")
       return;
     }
 
-    const { approved, removed } = req.body as { approved?: boolean; removed?: boolean };
+    const { approved, removed } = req.body as { approved?: unknown; removed?: unknown };
 
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
-    if (approved !== undefined) updateData.approved = approved;
-    if (removed !== undefined) updateData.removed = removed;
+    if (approved !== undefined) {
+      if (typeof approved !== "boolean") { res.status(400).json({ error: "approved must be a boolean" }); return; }
+      updateData.approved = approved;
+    }
+    if (removed !== undefined) {
+      if (typeof removed !== "boolean") { res.status(400).json({ error: "removed must be a boolean" }); return; }
+      updateData.removed = removed;
+    }
 
     if (Object.keys(updateData).length === 1) {
       res.status(400).json({ error: "At least one field (approved, removed) is required" });

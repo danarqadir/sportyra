@@ -12,4 +12,5 @@ export type ListNewsLanguage = typeof ListNewsLanguage[keyof typeof ListNewsLang
 export const ListNewsLanguage = {
   en: 'en',
   ar: 'ar',
+  ku: 'ku',
 } as const;

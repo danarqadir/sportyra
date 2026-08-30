@@ -21,7 +21,6 @@ COPY artifacts/sportyra/package.json  ./artifacts/sportyra/
 COPY lib/db/package.json              ./lib/db/
 COPY lib/api-zod/package.json         ./lib/api-zod/
 COPY lib/api-client-react/package.json ./lib/api-client-react/
-COPY scripts/package.json             ./scripts/
 
 # Install all dependencies (including devDependencies for build tools)
 RUN pnpm install --frozen-lockfile
@@ -54,7 +53,6 @@ COPY artifacts/sportyra/package.json  ./artifacts/sportyra/
 COPY lib/db/package.json              ./lib/db/
 COPY lib/api-zod/package.json         ./lib/api-zod/
 COPY lib/api-client-react/package.json ./lib/api-client-react/
-COPY scripts/package.json             ./scripts/
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod

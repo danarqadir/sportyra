@@ -32,7 +32,7 @@ export const listNewsQueryLimitMax = 100;
 
 
 export const ListNewsQueryParams = zod.object({
-  "language": zod.enum(['en', 'ar']).optional(),
+  "language": zod.enum(['en', 'ar', 'ku']).optional(),
   "category": zod.coerce.string().optional(),
   "published": zod.coerce.boolean().optional(),
   "featured": zod.coerce.boolean().optional(),
@@ -51,7 +51,7 @@ export const ListNewsResponse = zod.object({
   "body": zod.string().nullable(),
   "image": zod.string(),
   "category": zod.string(),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string(),
   "author": zod.string(),
   "tags": zod.array(zod.string()),
@@ -62,6 +62,12 @@ export const ListNewsResponse = zod.object({
   "publicationDate": zod.coerce.date(),
   "featured": zod.boolean(),
   "published": zod.boolean(),
+  "status": zod.string().optional(),
+  "partnerId": zod.number().nullable().optional(),
+  "isSponsored": zod.boolean().optional(),
+  "sponsorName": zod.string().nullable().optional(),
+  "sponsorUrl": zod.string().nullable().optional(),
+  "contentType": zod.string().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })),
@@ -90,7 +96,7 @@ export const CreateNewsBody = zod.object({
   "body": zod.string().optional(),
   "image": zod.string().min(1),
   "category": zod.string().min(1),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string().min(1),
   "author": zod.string().min(1),
   "tags": zod.array(zod.string()).optional(),
@@ -100,7 +106,11 @@ export const CreateNewsBody = zod.object({
   "metaDescription": zod.string().optional(),
   "publicationDate": zod.coerce.date(),
   "featured": zod.boolean().default(createNewsBodyFeaturedDefault),
-  "published": zod.boolean().default(createNewsBodyPublishedDefault)
+  "published": zod.boolean().default(createNewsBodyPublishedDefault),
+  "isSponsored": zod.boolean().optional(),
+  "sponsorName": zod.string().optional(),
+  "sponsorUrl": zod.string().optional(),
+  "contentType": zod.string().optional(),
 })
 
 export const CreateNewsResponse = zod.object({
@@ -110,7 +120,7 @@ export const CreateNewsResponse = zod.object({
   "body": zod.string().nullable(),
   "image": zod.string(),
   "category": zod.string(),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string(),
   "author": zod.string(),
   "tags": zod.array(zod.string()),
@@ -121,6 +131,12 @@ export const CreateNewsResponse = zod.object({
   "publicationDate": zod.coerce.date(),
   "featured": zod.boolean(),
   "published": zod.boolean(),
+  "status": zod.string().optional(),
+  "partnerId": zod.number().nullable().optional(),
+  "isSponsored": zod.boolean().optional(),
+  "sponsorName": zod.string().nullable().optional(),
+  "sponsorUrl": zod.string().nullable().optional(),
+  "contentType": zod.string().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -152,7 +168,7 @@ export const GetNewsResponse = zod.object({
   "body": zod.string().nullable(),
   "image": zod.string(),
   "category": zod.string(),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string(),
   "author": zod.string(),
   "tags": zod.array(zod.string()),
@@ -163,6 +179,12 @@ export const GetNewsResponse = zod.object({
   "publicationDate": zod.coerce.date(),
   "featured": zod.boolean(),
   "published": zod.boolean(),
+  "status": zod.string().optional(),
+  "partnerId": zod.number().nullable().optional(),
+  "isSponsored": zod.boolean().optional(),
+  "sponsorName": zod.string().nullable().optional(),
+  "sponsorUrl": zod.string().nullable().optional(),
+  "contentType": zod.string().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -189,7 +211,7 @@ export const UpdateNewsBody = zod.object({
   "body": zod.string().optional(),
   "image": zod.string().min(1).optional(),
   "category": zod.string().min(1).optional(),
-  "language": zod.enum(['en', 'ar']).optional(),
+  "language": zod.enum(['en', 'ar', 'ku']).optional(),
   "source": zod.string().min(1).optional(),
   "author": zod.string().min(1).optional(),
   "tags": zod.array(zod.string()).optional(),
@@ -199,7 +221,11 @@ export const UpdateNewsBody = zod.object({
   "metaDescription": zod.string().optional(),
   "publicationDate": zod.coerce.date().optional(),
   "featured": zod.boolean().optional(),
-  "published": zod.boolean().optional()
+  "published": zod.boolean().optional(),
+  "isSponsored": zod.boolean().optional(),
+  "sponsorName": zod.string().optional(),
+  "sponsorUrl": zod.string().optional(),
+  "contentType": zod.string().optional(),
 })
 
 export const UpdateNewsResponse = zod.object({
@@ -209,7 +235,7 @@ export const UpdateNewsResponse = zod.object({
   "body": zod.string().nullable(),
   "image": zod.string(),
   "category": zod.string(),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string(),
   "author": zod.string(),
   "tags": zod.array(zod.string()),
@@ -220,6 +246,12 @@ export const UpdateNewsResponse = zod.object({
   "publicationDate": zod.coerce.date(),
   "featured": zod.boolean(),
   "published": zod.boolean(),
+  "status": zod.string().optional(),
+  "partnerId": zod.number().nullable().optional(),
+  "isSponsored": zod.boolean().optional(),
+  "sponsorName": zod.string().nullable().optional(),
+  "sponsorUrl": zod.string().nullable().optional(),
+  "contentType": zod.string().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -253,7 +285,7 @@ export const PublishNewsResponse = zod.object({
   "body": zod.string().nullable(),
   "image": zod.string(),
   "category": zod.string(),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string(),
   "author": zod.string(),
   "tags": zod.array(zod.string()),
@@ -287,7 +319,7 @@ export const FeatureNewsResponse = zod.object({
   "body": zod.string().nullable(),
   "image": zod.string(),
   "category": zod.string(),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string(),
   "author": zod.string(),
   "tags": zod.array(zod.string()),
@@ -317,7 +349,7 @@ export const GetRelatedNewsResponseItem = zod.object({
   "body": zod.string().nullable(),
   "image": zod.string(),
   "category": zod.string(),
-  "language": zod.enum(['en', 'ar']),
+  "language": zod.enum(['en', 'ar', 'ku']),
   "source": zod.string(),
   "author": zod.string(),
   "tags": zod.array(zod.string()),

@@ -14,6 +14,10 @@ router.post("/newsletter/subscribe", rateLimit({ windowMs: 60_000, max: 8 }), as
   }
 
   const normalizedEmail = parsed.data.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    res.status(400).json({ error: "Please enter a valid email address." });
+    return;
+  }
   const [existing] = await db
     .select({ id: subscribersTable.id })
     .from(subscribersTable)

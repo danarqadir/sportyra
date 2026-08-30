@@ -36,6 +36,12 @@ export interface NewsArticle {
   publicationDate: string;
   featured: boolean;
   published: boolean;
+  status?: string;
+  partnerId?: number | null;
+  isSponsored?: boolean;
+  sponsorName?: string | null;
+  sponsorUrl?: string | null;
+  contentType?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +78,10 @@ export interface NewsInput {
   publicationDate: string;
   featured?: boolean;
   published?: boolean;
+  isSponsored?: boolean;
+  sponsorName?: string;
+  sponsorUrl?: string;
+  contentType?: string;
 }
 
 export type NewsUpdateLanguage = typeof NewsUpdateLanguage[keyof typeof NewsUpdateLanguage];

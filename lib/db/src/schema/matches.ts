@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, serial, text, timestamp, index, boolean } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, serial, text, timestamp, index, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const matchEventsTable = pgTable("match_events", {
   id: serial("id").primaryKey(),
@@ -7,6 +7,8 @@ export const matchEventsTable = pgTable("match_events", {
   minute: integer("minute"),
   playerId: integer("player_id"),
   playerName: text("player_name"),
+  relatedPlayerId: integer("related_player_id"),
+  relatedPlayerName: text("related_player_name"),
   teamSide: text("team_side"),
   detail: text("detail"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -55,12 +57,14 @@ export const matchesTable = pgTable("matches", {
   venue: text("venue"),
   competitionName: text("competition_name"),
   competitionLogo: text("competition_logo"),
+  apiId: text("api_id"),
   isDemo: boolean("is_demo").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   statusIdx: index("matches_status_idx").on(table.status),
   dateIdx: index("matches_date_idx").on(table.matchDate),
+  apiIdIdx: uniqueIndex("matches_api_id_idx").on(table.apiId),
 }));
 
 export type Match = typeof matchesTable.$inferSelect;

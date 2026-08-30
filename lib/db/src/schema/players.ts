@@ -1,4 +1,4 @@
-import { integer, pgTable, serial, text, timestamp, index, boolean } from "drizzle-orm/pg-core";
+import { integer, pgTable, serial, text, timestamp, index, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const playersTable = pgTable("players", {
   id: serial("id").primaryKey(),
@@ -15,7 +15,11 @@ export const playersTable = pgTable("players", {
   goals: integer("goals").notNull().default(0),
   assists: integer("assists").notNull().default(0),
   appearances: integer("appearances").notNull().default(0),
+  minutes: integer("minutes").notNull().default(0),
+  yellowCards: integer("yellow_cards").notNull().default(0),
+  redCards: integer("red_cards").notNull().default(0),
   trophies: text("trophies").array().notNull().default([]),
+  apiId: text("api_id"),
   isDemo: boolean("is_demo").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -23,6 +27,7 @@ export const playersTable = pgTable("players", {
   slugIdx: index("players_slug_idx").on(table.slug),
   clubIdx: index("players_club_idx").on(table.club),
   nameIdx: index("players_name_idx").on(table.name),
+  apiIdIdx: uniqueIndex("players_api_id_idx").on(table.apiId),
 }));
 
 export type Player = typeof playersTable.$inferSelect;

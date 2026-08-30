@@ -5,6 +5,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import { captureException } from "@/lib/sentry";
+
 export interface ErrorFallbackProps {
   error: Error;
   resetError: () => void;
@@ -80,6 +82,12 @@ export class ErrorBoundary extends Component<
       toError(error),
       info.componentStack,
     );
+    // Report to Sentry in production
+    if (!import.meta.env.DEV) {
+      captureException(toError(error), {
+        componentStack: info.componentStack,
+      });
+    }
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps): void {

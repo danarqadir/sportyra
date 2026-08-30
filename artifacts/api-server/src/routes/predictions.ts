@@ -34,11 +34,10 @@ router.post("/predictions", requireUser, rateLimit({ windowMs: 15 * 60_000, max:
   } catch (error) { next(error); }
 });
 
-router.get("/predictions/user/:userId", rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next) => {
+router.get("/predictions/me", requireUser, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next) => {
   try {
-    const userId = Number(req.params.userId);
-    if (!Number.isInteger(userId) || userId <= 0) { res.status(400).json({ error: "Invalid user ID" }); return; }
-    const rows = await db.select().from(predictionsTable).where(eq(predictionsTable.userId, userId)).orderBy(desc(predictionsTable.createdAt));
+    const user = res.locals.user as { id: number };
+    const rows = await db.select().from(predictionsTable).where(eq(predictionsTable.userId, user.id)).orderBy(desc(predictionsTable.createdAt));
     res.json({ items: rows });
   } catch (error) { next(error); }
 });

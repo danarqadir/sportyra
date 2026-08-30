@@ -1,5 +1,7 @@
-import { boolean, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, serial, text, timestamp, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+
+export const userRoleEnum = pgEnum("user_role", ["user", "editor", "admin", "partner"]);
 
 export const usersTable = pgTable(
   "users",
@@ -8,8 +10,12 @@ export const usersTable = pgTable(
     name: text("name").notNull(),
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
-    role: text("role").notNull().default("user"),
+    role: userRoleEnum("role").notNull().default("user"),
     active: boolean("active").notNull().default(true),
+    referredByPartnerId: integer("referred_by_partner_id"),
+    referredByCode: text("referred_by_code"),
+    mfaSecret: text("mfa_secret"),
+    mfaEnabled: boolean("mfa_enabled").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

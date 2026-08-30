@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, serial, text, timestamp, index } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, serial, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const teamPagesTable = pgTable("team_pages", {
   id: serial("id").primaryKey(),
@@ -22,12 +22,14 @@ export const teamPagesTable = pgTable("team_pages", {
   goalsFor: integer("goals_for"),
   goalsAgainst: integer("goals_against"),
   form: text("form").array(),
+  apiId: text("api_id"),
   isDemo: boolean("is_demo").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   slugIdx: index("team_pages_slug_idx").on(table.slug),
   countryIdx: index("team_pages_country_idx").on(table.country),
+  apiIdIdx: uniqueIndex("team_pages_api_id_idx").on(table.apiId),
 }));
 
 export type TeamPage = typeof teamPagesTable.$inferSelect;

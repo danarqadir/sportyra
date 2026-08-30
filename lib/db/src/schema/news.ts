@@ -19,6 +19,15 @@ export const newsTable = pgTable("news", {
   publicationDate: timestamp("publication_date", { withTimezone: true }).notNull(),
   featured: boolean("featured").notNull().default(false),
   published: boolean("published").notNull().default(false),
+  status: text("status").notNull().default("draft"),
+  partnerId: integer("partner_id"),
+  reviewNote: text("review_note"),
+  reviewedBy: integer("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  isSponsored: boolean("is_sponsored").notNull().default(false),
+  sponsorName: text("sponsor_name"),
+  sponsorUrl: text("sponsor_url"),
+  contentType: text("content_type").notNull().default("editorial"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
@@ -28,6 +37,10 @@ export const newsTable = pgTable("news", {
   slugIdx: index("news_slug_idx").on(table.slug),
   categoryIdx: index("news_category_idx").on(table.category),
   publishedIdx: index("news_published_idx").on(table.published),
+  statusIdx: index("news_status_idx").on(table.status),
+  partnerIdIdx: index("news_partner_id_idx").on(table.partnerId),
+  contentTypeIdx: index("news_content_type_idx").on(table.contentType),
+  sponsoredIdx: index("news_sponsored_idx").on(table.isSponsored),
 }));
 
 export const insertNewsSchema = createInsertSchema(newsTable).omit({

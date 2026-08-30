@@ -8,9 +8,8 @@ const PLACEHOLDER_LOGOS: Record<string, string> = {
 };
 
 const PLACEHOLDER_PHOTOS: Record<string, string> = {
-  player: "https://i.pravatar.cc/300",
-  team: "https://i.pravatar.cc/200",
-  default: "https://i.pravatar.cc/300",
+  team: "https://upload.wikimedia.org/wikipedia/en/0/09/English_Football_League_logo.svg",
+  default: "https://upload.wikimedia.org/wikipedia/en/0/09/English_Football_League_logo.svg",
 };
 
 export type ImageSource = {
@@ -35,34 +34,27 @@ function isPlaceholderUrl(url: string): boolean {
 
 export function resolveImageUrl(imageUrl: string | null | undefined, entityType?: string, entityId?: number): ImageSource {
   if (!imageUrl || imageUrl.trim() === "") {
-    return {
-      url: PLACEHOLDER_PHOTOS[entityType || "default"] || PLACEHOLDER_PHOTOS.default,
-      source: "placeholder",
-    };
+    const fallback = PLACEHOLDER_PHOTOS[entityType || "default"];
+    return fallback
+      ? { url: fallback, source: "placeholder" }
+      : { url: null, source: "none" };
   }
 
   const trimmed = imageUrl.trim();
 
-  if (isValidHttpUrl(trimmed) && !isPlaceholderUrl(trimmed)) {
-    return { url: trimmed, source: "provided" };
-  }
-
   if (isValidHttpUrl(trimmed) && isPlaceholderUrl(trimmed)) {
-    return { url: trimmed, source: "placeholder" };
-  }
-
-  if (trimmed.startsWith("/")) {
-    return { url: trimmed, source: "local" };
+    return { url: null, source: "placeholder_stripped" };
   }
 
   if (isValidHttpUrl(trimmed)) {
     return { url: trimmed, source: "provided" };
   }
 
-  return {
-    url: PLACEHOLDER_PHOTOS[entityType || "default"] || PLACEHOLDER_PHOTOS.default,
-    source: "fallback",
-  };
+  if (trimmed.startsWith("/")) {
+    return { url: trimmed, source: "local" };
+  }
+
+  return { url: null, source: "invalid" };
 }
 
 export function resolveTeamLogo(logoUrl: string | null | undefined, teamId?: number): ImageSource {
@@ -95,9 +87,6 @@ export function batchResolveImages<T extends { id: number; imageUrl?: string | n
   return resolved;
 }
 
-export const IMAGE_RESOLVER_SELECT = sql<string>`COALESCE(
-  NULLIF(${sql.raw("''")}, ''),
-  ${sql.raw("'https://i.pravatar.cc/300'")}
-)`;
+export const IMAGE_RESOLVER_SELECT = sql<string>`NULLIF(${sql.raw("''")}, '')`;
 
 export { PLACEHOLDER_LOGOS, PLACEHOLDER_PHOTOS, isValidHttpUrl, isPlaceholderUrl };

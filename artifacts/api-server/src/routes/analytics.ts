@@ -1,11 +1,16 @@
 import { Router } from "express";
 import { and, count, desc, eq, gte, sql, ne } from "drizzle-orm";
+import crypto from "node:crypto";
 import { db, analyticsEventsTable, newsTable } from "@workspace/db";
 import { requireAdmin } from "../lib/auth";
 import { rateLimit } from "../lib/rate-limit";
 
 const router = Router();
-const allowedEvents = new Set(["page_view", "article_view", "search", "newsletter_signup", "share"]);
+const allowedEvents = new Set(["page_view", "article_view", "search", "newsletter_signup", "share", "ad_impression", "ad_click", "sponsor_view", "sponsor_click", "affiliate_click", "premium_gate", "campaign_view", "campaign_click", "label_view", "label_click"]);
+
+function hashValue(value: string): string {
+  return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
 
 router.post("/analytics/events", rateLimit({ windowMs: 60_000, max: 60 }), async (req, res, next): Promise<void> => {
   try {
@@ -14,6 +19,8 @@ router.post("/analytics/events", rateLimit({ windowMs: 60_000, max: 60 }), async
     const articleId = Number.isInteger(req.body?.articleId) ? req.body.articleId : null;
     const referrer = typeof req.body?.referrer === "string" ? req.body.referrer.slice(0, 1000) : null;
     const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.slice(0, 128) : null;
+    const partnerId = Number.isInteger(req.body?.partnerId) ? req.body.partnerId : null;
+    const referralCode = typeof req.body?.referralCode === "string" ? req.body.referralCode.slice(0, 50) : null;
     if (!allowedEvents.has(eventType) || path.length < 1) {
       res.status(400).json({ error: "Invalid analytics event." });
       return;
@@ -24,8 +31,10 @@ router.post("/analytics/events", rateLimit({ windowMs: 60_000, max: 60 }), async
       path,
       articleId,
       referrer,
-      userAgent: req.get("user-agent")?.slice(0, 500) ?? null,
+      userAgent: req.get("user-agent") ? hashValue(req.get("user-agent") as string) : null,
       sessionId,
+      partnerId,
+      referralCode,
     });
     res.status(204).send();
   } catch (error) {

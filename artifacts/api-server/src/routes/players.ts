@@ -2,52 +2,82 @@ import { Router, type IRouter } from "express";
 import { db, playersTable } from "@workspace/db";
 import { eq, desc, asc, ilike, or, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
+import { PlayerCreate, PlayerUpdate } from "../lib/validation";
+import { adminMutationRateLimit } from "../lib/rate-limit";
 
 const router: IRouter = Router();
 
 router.get("/players", async (req, res, next) => {
   try {
-    const { search, position, club, limit: rawLimit } = req.query as Record<string, string | undefined>;
-    const limit = Math.min(Number(rawLimit) || 20, 50);
-    const filters = [];
-    if (search) filters.push(or(ilike(playersTable.name, `%${search}%`), ilike(playersTable.club, `%${search}%`)));
+    const { search, position, club, limit: rawLimit, page: rawPage, pageSize: rawPageSize } = req.query as Record<string, string | undefined>;
+    const page = Math.max(1, Number(rawPage) || 1);
+    const pageSize = Math.max(1, Math.min(Number(rawPageSize) || Number(rawLimit) || 20, 100));
+    const filters: Array<ReturnType<typeof eq> | ReturnType<typeof or> | ReturnType<typeof ilike>> = [eq(playersTable.isDemo, false)];
+    if (search) filters.push(or(ilike(playersTable.name, `%${search}%`), ilike(playersTable.club, `%${search}%`)) as ReturnType<typeof eq>);
     if (position) filters.push(eq(playersTable.position, position));
     if (club) filters.push(ilike(playersTable.club, `%${club}%`));
-    const where = filters.length ? and(...filters) : undefined;
-    const rows = await db.select().from(playersTable).where(where).orderBy(desc(playersTable.goals)).limit(limit);
+    const where = and(...filters)!;
+    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(playersTable).where(where);
+    const rows = await db.select().from(playersTable).where(where).orderBy(desc(playersTable.goals), desc(playersTable.appearances), asc(playersTable.id)).limit(pageSize).offset((page - 1) * pageSize);
+    res.json({ items: rows, total: count, page, pageSize });
+  } catch (error) { next(error); }
+});
+
+// Real top scorers derived from synced match data (demo players excluded).
+router.get("/players/top-scorers", async (req, res, next) => {
+  try {
+    const { limit: rawLimit } = req.query as Record<string, string | undefined>;
+    const limit = Math.max(1, Math.min(Number(rawLimit) || 20, 100));
+    const rows = await db
+      .select()
+      .from(playersTable)
+      .where(and(eq(playersTable.isDemo, false), sql`${playersTable.goals} > 0`))
+      .orderBy(desc(playersTable.goals), desc(playersTable.assists), desc(playersTable.appearances), asc(playersTable.id))
+      .limit(limit);
     res.json({ items: rows, total: rows.length });
   } catch (error) { next(error); }
 });
 
 router.get("/players/:slug", async (req, res, next) => {
   try {
-    const [player] = await db.select().from(playersTable).where(eq(playersTable.slug, req.params.slug));
+    const [player] = await db.select().from(playersTable).where(and(eq(playersTable.slug, req.params.slug), eq(playersTable.isDemo, false)));
     if (!player) { res.status(404).json({ error: "Player not found" }); return; }
     res.json(player);
   } catch (error) { next(error); }
 });
 
-router.post("/players", requireAdmin, async (req, res, next) => {
+router.post("/players", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
   try {
-    const { name, slug, nationality, dateOfBirth, position, club, shirtNumber, photoUrl, biography, goals, assists, appearances, trophies } = req.body;
-    if (!name || !slug) { res.status(400).json({ error: "name and slug are required" }); return; }
+    const parsed = PlayerCreate.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.issues.map((i) => i.message) });
+      return;
+    }
+    const { dateOfBirth, ...fields } = parsed.data;
     const [player] = await db.insert(playersTable).values({
-      name, slug, nationality: nationality ?? null, dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-      position: position ?? null, club: club ?? null, shirtNumber: shirtNumber ?? null,
-      photoUrl: photoUrl ?? null, biography: biography ?? null, goals: goals ?? 0,
-      assists: assists ?? 0, appearances: appearances ?? 0, trophies: trophies ?? [],
+      ...fields,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+      goals: fields.goals ?? 0,
+      assists: fields.assists ?? 0,
+      appearances: fields.appearances ?? 0,
+      trophies: fields.trophies ?? [],
     }).returning();
     res.status(201).json(player);
   } catch (error) { next(error); }
 });
 
-router.patch("/players/:id", requireAdmin, async (req, res, next) => {
+router.patch("/players/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid player id" }); return; }
-    const allowed = ["name", "nationality", "dateOfBirth", "position", "club", "shirtNumber", "photoUrl", "biography", "goals", "assists", "appearances", "trophies"];
-    const updateData: Record<string, unknown> = {};
-    for (const key of allowed) { if (req.body[key] !== undefined) updateData[key] = key === "dateOfBirth" ? new Date(req.body[key]) : req.body[key]; }
+    const parsed = PlayerUpdate.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.issues.map((i) => i.message) });
+      return;
+    }
+    const { dateOfBirth, ...rest } = parsed.data;
+    const updateData: Record<string, unknown> = { ...rest };
+    if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     if (Object.keys(updateData).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
     updateData.updatedAt = new Date();
     const [player] = await db.update(playersTable).set(updateData).where(eq(playersTable.id, id)).returning();
@@ -56,7 +86,7 @@ router.patch("/players/:id", requireAdmin, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.delete("/players/:id", requireAdmin, async (req, res, next) => {
+router.delete("/players/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid player id" }); return; }
