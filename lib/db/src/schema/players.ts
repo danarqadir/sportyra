@@ -1,4 +1,5 @@
 import { integer, pgTable, serial, text, timestamp, index, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { teamsTable } from "./fixtures";
 
 export const playersTable = pgTable("players", {
   id: serial("id").primaryKey(),
@@ -8,7 +9,7 @@ export const playersTable = pgTable("players", {
   dateOfBirth: timestamp("date_of_birth", { withTimezone: true }),
   position: text("position"),
   club: text("club"),
-  clubId: integer("club_id"),
+  clubId: integer("club_id").references(() => teamsTable.id, { onDelete: "set null" }),
   shirtNumber: integer("shirt_number"),
   photoUrl: text("photo_url"),
   biography: text("biography"),
@@ -26,6 +27,7 @@ export const playersTable = pgTable("players", {
 }, (table) => ({
   slugIdx: index("players_slug_idx").on(table.slug),
   clubIdx: index("players_club_idx").on(table.club),
+  clubIdIdx: index("players_club_id_idx").on(table.clubId),
   nameIdx: index("players_name_idx").on(table.name),
   apiIdIdx: uniqueIndex("players_api_id_idx").on(table.apiId),
 }));

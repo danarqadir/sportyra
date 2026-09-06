@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, moderationReportsTable, auditLogTable } from "@workspace/db";
 import { eq, and, desc, count, sql } from "drizzle-orm";
-import { requireUser, hasAdminToken, requireAdminOrRole } from "../lib/auth";
+import { requireUser, hasAdminToken, requireAdminOrRole, requireAdminMutation } from "../lib/auth";
 import { rateLimit, adminMutationRateLimit } from "../lib/rate-limit";
 import { sanitizeHtml } from "../lib/sanitize";
 
@@ -103,7 +103,7 @@ router.get("/admin/moderation", requireAdminOrRole("admin", "editor"), async (re
   }
 });
 
-router.patch("/admin/moderation/:reportId", requireAdminOrRole("admin", "editor"), adminMutationRateLimit, async (req, res, next) => {
+router.patch("/admin/moderation/:reportId", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const reportId = Number(req.params.reportId);
     if (!Number.isInteger(reportId) || reportId <= 0) {

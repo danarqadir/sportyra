@@ -10,7 +10,7 @@ import {
 import { eq, desc, or, ilike, and, asc, sql } from "drizzle-orm";
 import { competitionsTable } from "@workspace/db";
 import { rateLimit } from "../lib/rate-limit";
-import { requireAdmin } from "../lib/auth";
+import { requireAdminMutation } from "../lib/auth";
 import { enrichTransfers } from "../lib/transfer-images";
 
 const publicRateLimit = rateLimit({ windowMs: 60_000, max: 120 });
@@ -321,7 +321,7 @@ router.get("/team-pages/:slug", publicRateLimit, async (req, res, next) => {
   }
 });
 
-router.patch("/team-pages/:id", requireAdmin, async (req, res, next) => {
+router.patch("/team-pages/:id", requireAdminMutation, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid team page id" }); return; }

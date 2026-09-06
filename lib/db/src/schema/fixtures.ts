@@ -48,6 +48,8 @@ export const fixturesTable = pgTable("fixtures", {
   matchDateIdx: index("fixtures_match_date_idx").on(table.matchDate),
   statusIdx: index("fixtures_status_idx").on(table.status),
   competitionIdx: index("fixtures_competition_idx").on(table.competitionId),
+  homeTeamIdx: index("fixtures_home_team_idx").on(table.homeTeamId),
+  awayTeamIdx: index("fixtures_away_team_idx").on(table.awayTeamId),
   apiIdIdx: uniqueIndex("fixtures_api_id_idx").on(table.apiId),
 }));
 

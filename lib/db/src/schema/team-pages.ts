@@ -1,8 +1,9 @@
 import { boolean, integer, jsonb, pgTable, serial, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { teamsTable } from "./fixtures";
 
 export const teamPagesTable = pgTable("team_pages", {
   id: serial("id").primaryKey(),
-  teamId: integer("team_id"),
+  teamId: integer("team_id").references(() => teamsTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   shortName: text("short_name"),
@@ -29,6 +30,7 @@ export const teamPagesTable = pgTable("team_pages", {
 }, (table) => ({
   slugIdx: index("team_pages_slug_idx").on(table.slug),
   countryIdx: index("team_pages_country_idx").on(table.country),
+  teamIdIdx: index("team_pages_team_id_idx").on(table.teamId),
   apiIdIdx: uniqueIndex("team_pages_api_id_idx").on(table.apiId),
 }));
 

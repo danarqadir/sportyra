@@ -5,7 +5,7 @@ import {
   createSession, destroyAllUserSessions, destroySession,
   hashPassword, normalizeEmail, requireUser, verifyPassword,
   generatePasswordResetToken, verifyPasswordResetToken, validateRole,
-  requireAdmin, hasAdminToken, ensureAdminTokenUser,
+  requireAdmin, requireAdminMutation, hasAdminToken, ensureAdminTokenUser,
   createMfaSession, clearMfaSession,
 } from "../lib/auth";
 import { generateTotpSecret, verifyTotp, otpauthUrl } from "../lib/totp";
@@ -215,7 +215,7 @@ router.post("/auth/reset-password", rateLimit({ windowMs: 15 * 60_000, max: 5 })
   }
 });
 
-router.post("/auth/mfa/setup", requireAdmin, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
+router.post("/auth/mfa/setup", requireAdminMutation, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
   try {
     const admin = res.locals.user as typeof usersTable.$inferSelect;
     if (admin.mfaEnabled) {
@@ -241,7 +241,7 @@ router.post("/auth/mfa/setup", requireAdmin, rateLimit({ windowMs: 15 * 60_000, 
   }
 });
 
-router.post("/auth/mfa/verify", requireAdmin, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
+router.post("/auth/mfa/verify", requireAdminMutation, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
   try {
     const admin = res.locals.user as typeof usersTable.$inferSelect;
     const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
@@ -296,7 +296,7 @@ router.post("/auth/mfa/authenticate", rateLimit({ windowMs: 15 * 60_000, max: 20
   }
 });
 
-router.post("/auth/mfa/disable", requireAdmin, rateLimit({ windowMs: 15 * 60_000, max: 5 }), async (req, res, next): Promise<void> => {
+router.post("/auth/mfa/disable", requireAdminMutation, rateLimit({ windowMs: 15 * 60_000, max: 5 }), async (req, res, next): Promise<void> => {
   try {
     const admin = res.locals.user as typeof usersTable.$inferSelect;
     if (!admin.mfaEnabled || !admin.mfaSecret) {
@@ -372,13 +372,8 @@ router.delete("/auth/account", requireUser, rateLimit({ windowMs: 15 * 60_000, m
   }
 });
 
-router.get("/auth/users", requireUser, async (req, res, next): Promise<void> => {
+router.get("/auth/users", requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    const currentUser = res.locals.user as typeof usersTable.$inferSelect;
-    if (currentUser.role !== "admin") {
-      res.status(403).json({ error: "Admin access required" });
-      return;
-    }
     const users = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, role: usersTable.role, active: usersTable.active, mfaEnabled: usersTable.mfaEnabled, createdAt: usersTable.createdAt }).from(usersTable);
     res.json(users);
   } catch (error) {
@@ -386,13 +381,9 @@ router.get("/auth/users", requireUser, async (req, res, next): Promise<void> => 
   }
 });
 
-router.patch("/auth/users/:id/role", requireUser, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
+router.patch("/auth/users/:id/role", requireAdminMutation, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
   try {
     const currentUser = res.locals.user as typeof usersTable.$inferSelect;
-    if (currentUser.role !== "admin") {
-      res.status(403).json({ error: "Admin access required" });
-      return;
-    }
     const targetId = Number(req.params.id);
     if (!Number.isInteger(targetId) || targetId <= 0) {
       res.status(400).json({ error: "Invalid user ID" });
@@ -425,13 +416,9 @@ router.patch("/auth/users/:id/role", requireUser, rateLimit({ windowMs: 15 * 60_
   }
 });
 
-router.patch("/auth/users/:id/active", requireUser, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
+router.patch("/auth/users/:id/active", requireAdminMutation, rateLimit({ windowMs: 15 * 60_000, max: 10 }), async (req, res, next): Promise<void> => {
   try {
     const currentUser = res.locals.user as typeof usersTable.$inferSelect;
-    if (currentUser.role !== "admin") {
-      res.status(403).json({ error: "Admin access required" });
-      return;
-    }
     const targetId = Number(req.params.id);
     if (!Number.isInteger(targetId) || targetId <= 0) {
       res.status(400).json({ error: "Invalid user ID" });

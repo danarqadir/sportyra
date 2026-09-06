@@ -1,6 +1,7 @@
 import { boolean, decimal, index, integer, json, pgTable, serial, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { partnersTable } from "./partners";
 import { newsTable } from "./news";
+import { usersTable } from "./users";
 
 export const contentLabelTypeEnum = pgEnum("content_label_type", ["sponsored", "promoted", "premium", "campaign", "partner_promo", "house_ad", "affiliate", "featured_sponsor"]);
 
@@ -15,8 +16,8 @@ export const contentLabelsTable = pgTable("content_labels", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   active: boolean("active").notNull().default(true),
   partnerId: integer("partner_id").references(() => partnersTable.id),
-  campaignId: integer("campaign_id"),
-  createdBy: integer("created_by"),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
+  createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
@@ -43,7 +44,7 @@ export const adPlacementsTable = pgTable("ad_placements", {
   impressions: integer("impressions").notNull().default(0),
   clicks: integer("clicks").notNull().default(0),
   partnerId: integer("partner_id").references(() => partnersTable.id),
-  campaignId: integer("campaign_id"),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
   startsAt: timestamp("starts_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdBy: integer("created_by"),
@@ -61,9 +62,9 @@ export const adEventsTable = pgTable("ad_events", {
   adId: integer("ad_id").references(() => adPlacementsTable.id, { onDelete: "set null" }),
   eventType: text("event_type").notNull(),
   sessionId: text("session_id"),
-  partnerId: integer("partner_id"),
-  campaignId: integer("campaign_id"),
-  articleId: integer("article_id"),
+  partnerId: integer("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
+  articleId: integer("article_id").references(() => newsTable.id, { onDelete: "set null" }),
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -92,7 +93,7 @@ export const campaignsTable = pgTable("campaigns", {
   startsAt: timestamp("starts_at", { withTimezone: true }),
   endsAt: timestamp("ends_at", { withTimezone: true }),
   metadata: json("metadata"),
-  createdBy: integer("created_by"),
+  createdBy: integer("created_by").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
@@ -104,10 +105,10 @@ export const campaignsTable = pgTable("campaigns", {
 export const monetizationEventsTable = pgTable("monetization_events", {
   id: serial("id").primaryKey(),
   eventType: text("event_type").notNull(),
-  articleId: integer("article_id"),
-  adId: integer("ad_id"),
-  partnerId: integer("partner_id"),
-  campaignId: integer("campaign_id"),
+  articleId: integer("article_id").references(() => newsTable.id, { onDelete: "set null" }),
+  adId: integer("ad_id").references(() => adPlacementsTable.id, { onDelete: "set null" }),
+  partnerId: integer("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
   sessionId: text("session_id"),
   metadata: json("metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

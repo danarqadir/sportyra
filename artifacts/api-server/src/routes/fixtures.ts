@@ -16,7 +16,7 @@ import {
   or,
   ilike,
 } from "drizzle-orm";
-import { requireAdmin } from "../lib/auth";
+import { requireAdmin, requireAdminMutation } from "../lib/auth";
 import { FixtureCreate, FixtureUpdate, CompetitionCreate, TeamCreate } from "../lib/validation";
 import { adminMutationRateLimit } from "../lib/rate-limit";
 
@@ -243,7 +243,7 @@ router.get("/fixtures/:id", async (req, res, next) => {
   }
 });
 
-router.post("/fixtures", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/fixtures", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const parsed = FixtureCreate.safeParse(req.body);
     if (!parsed.success) {
@@ -266,7 +266,7 @@ router.post("/fixtures", requireAdmin, adminMutationRateLimit, async (req, res, 
   }
 });
 
-router.patch("/fixtures/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.patch("/fixtures/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -308,7 +308,7 @@ router.patch("/fixtures/:id", requireAdmin, adminMutationRateLimit, async (req, 
   }
 });
 
-router.delete("/fixtures/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.delete("/fixtures/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -358,7 +358,7 @@ router.get("/competitions", async (req, res, next) => {
   }
 });
 
-router.post("/competitions", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/competitions", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const parsed = CompetitionCreate.safeParse(req.body);
     if (!parsed.success) {
@@ -410,7 +410,7 @@ router.get("/teams", async (req, res, next) => {
   }
 });
 
-router.post("/teams", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/teams", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const parsed = TeamCreate.safeParse(req.body);
     if (!parsed.success) {

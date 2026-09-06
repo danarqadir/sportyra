@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { requireAdmin } from "../lib/auth";
+import { requireAdminMutation } from "../lib/auth";
 import { adminMutationRateLimit } from "../lib/rate-limit";
 import { isSportmonksConfigured } from "../lib/sportmonks";
 import { runSportmonksSync, syncStandings, syncLivescores, syncMatchDetailsByApiId } from "../lib/sportmonks-sync";
@@ -13,7 +13,7 @@ router.get("/sports/sync/status", async (_req, res) => {
   });
 });
 
-router.post("/sports/sync", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/sports/sync", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const summary = await runSportmonksSync({
@@ -35,7 +35,7 @@ router.post("/sports/sync", requireAdmin, adminMutationRateLimit, async (req, re
   }
 });
 
-router.post("/sports/sync/standings", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/sports/sync/standings", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const leagueId = Number((req.body as Record<string, unknown>)?.leagueApiId);
     const updated = Number.isInteger(leagueId) && leagueId > 0 ? await syncStandings(leagueId) : await syncStandings();
@@ -45,7 +45,7 @@ router.post("/sports/sync/standings", requireAdmin, adminMutationRateLimit, asyn
   }
 });
 
-router.post("/sports/sync/livescores", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/sports/sync/livescores", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const count = await syncLivescores();
     res.json({ count });
@@ -54,7 +54,7 @@ router.post("/sports/sync/livescores", requireAdmin, adminMutationRateLimit, asy
   }
 });
 
-router.post("/sports/sync/match-details/:fixtureId", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/sports/sync/match-details/:fixtureId", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const fixtureId = Number(req.params.fixtureId);
     if (!Number.isInteger(fixtureId) || fixtureId <= 0) {

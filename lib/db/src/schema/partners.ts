@@ -1,5 +1,6 @@
 import { boolean, decimal, index, integer, pgTable, serial, text, timestamp, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { usersTable } from "./users";
 
 export const partnerStatusEnum = pgEnum("partner_status", ["pending", "approved", "rejected", "suspended", "active"]);
 
@@ -7,7 +8,7 @@ export const partnersTable = pgTable(
   "partners",
   {
     id: serial("id").primaryKey(),
-    userId: integer("user_id"),
+    userId: integer("user_id").references(() => usersTable.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     email: text("email").notNull(),
     referralCode: text("referral_code").notNull(),
@@ -27,12 +28,12 @@ export const partnersTable = pgTable(
     phone: text("phone"),
     address: text("address"),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
-    approvedBy: integer("approved_by"),
+    approvedBy: integer("approved_by").references(() => usersTable.id, { onDelete: "set null" }),
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
-    rejectedBy: integer("rejected_by"),
+    rejectedBy: integer("rejected_by").references(() => usersTable.id, { onDelete: "set null" }),
     rejectedReason: text("rejected_reason"),
     suspendedAt: timestamp("suspended_at", { withTimezone: true }),
-    suspendedBy: integer("suspended_by"),
+    suspendedBy: integer("suspended_by").references(() => usersTable.id, { onDelete: "set null" }),
     suspendedReason: text("suspended_reason"),
     secretHash: text("secret_hash"),
     secretPrefix: text("secret_prefix"),
@@ -51,7 +52,7 @@ export const referralLinksTable = pgTable(
   "referral_links",
   {
     id: serial("id").primaryKey(),
-    partnerId: integer("partner_id").notNull(),
+    partnerId: integer("partner_id").notNull().references(() => partnersTable.id),
     code: text("code").notNull(),
     targetUrl: text("target_url").notNull(),
     label: text("label"),
@@ -72,8 +73,8 @@ export const referralEventsTable = pgTable(
   "referral_events",
   {
     id: serial("id").primaryKey(),
-    partnerId: integer("partner_id").notNull(),
-    linkId: integer("link_id"),
+    partnerId: integer("partner_id").notNull().references(() => partnersTable.id),
+    linkId: integer("link_id").references(() => referralLinksTable.id, { onDelete: "set null" }),
     eventType: text("event_type").notNull().default("click"),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
@@ -94,8 +95,8 @@ export const referralClicksTable = pgTable(
   "referral_clicks",
   {
     id: serial("id").primaryKey(),
-    partnerId: integer("partner_id").notNull(),
-    linkId: integer("link_id"),
+    partnerId: integer("partner_id").notNull().references(() => partnersTable.id),
+    linkId: integer("link_id").references(() => referralLinksTable.id, { onDelete: "set null" }),
     code: text("code").notNull(),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
@@ -119,7 +120,7 @@ export const payoutsTable = pgTable(
   "payouts",
   {
     id: serial("id").primaryKey(),
-    partnerId: integer("partner_id").notNull(),
+    partnerId: integer("partner_id").notNull().references(() => partnersTable.id),
     amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
     method: text("method").notNull().default("manual"),
     reference: text("reference"),
@@ -130,7 +131,7 @@ export const payoutsTable = pgTable(
   },
   (table) => ({
     partnerIdx: index("payouts_partner_idx").on(table.partnerId),
-    idempotencyKeyIdx: index("payouts_idempotency_key_idx").on(table.idempotencyKey),
+    idempotencyKeyUnique: uniqueIndex("payouts_idempotency_key_unique").on(table.idempotencyKey),
   }),
 );
 
@@ -138,7 +139,7 @@ export const creatorEarningsLedgerTable = pgTable(
   "creator_earnings_ledger",
   {
     id: serial("id").primaryKey(),
-    partnerId: integer("partner_id").notNull(),
+    partnerId: integer("partner_id").notNull().references(() => partnersTable.id),
     amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
     type: text("type").notNull().default("click"),
     description: text("description"),
@@ -150,9 +151,25 @@ export const creatorEarningsLedgerTable = pgTable(
   }),
 );
 
+export const partnerSessionsTable = pgTable(
+  "partner_sessions",
+  {
+    id: serial("id").primaryKey(),
+    partnerId: integer("partner_id").notNull().references(() => partnersTable.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHashIdx: index("partner_sessions_token_hash_idx").on(table.tokenHash),
+    partnerIdx: index("partner_sessions_partner_id_idx").on(table.partnerId),
+  }),
+);
+
 export type Partner = typeof partnersTable.$inferSelect;
 export type ReferralLink = typeof referralLinksTable.$inferSelect;
 export type ReferralEvent = typeof referralEventsTable.$inferSelect;
 export type ReferralClick = typeof referralClicksTable.$inferSelect;
 export type Payout = typeof payoutsTable.$inferSelect;
 export type CreatorEarningsLedger = typeof creatorEarningsLedgerTable.$inferSelect;
+export type PartnerSession = typeof partnerSessionsTable.$inferSelect;

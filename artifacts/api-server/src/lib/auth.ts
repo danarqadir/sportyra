@@ -2,7 +2,9 @@ import crypto from "node:crypto";
 export { hashPassword, verifyPassword } from "./password";
 import type { NextFunction, Request, Response } from "express";
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { db, sessionsTable, usersTable, passwordResetsTable, partnersTable } from "@workspace/db";
+import { db, sessionsTable, usersTable, passwordResetsTable, partnersTable, partnerSessionsTable } from "@workspace/db";
+import { getAdminAuthorizationFailure } from "./admin-authorization";
+export { getAdminAuthorizationFailure, type AdminAuthorizationPrincipal } from "./admin-authorization";
 
 declare global {
   namespace Express {
@@ -201,6 +203,7 @@ export async function ensureAdminTokenUser(res: Response): Promise<boolean> {
 }
 
 export function requireAdminOrRole(...roles: string[]) {
+  const allowedRoles = new Set(["admin", ...roles]);
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (hasAdminToken(req)) {
@@ -217,13 +220,26 @@ export function requireAdminOrRole(...roles: string[]) {
         next();
         return;
       }
-      const user = res.locals.user as typeof usersTable.$inferSelect | undefined;
-      if (!user) {
+      // Session-cookie branch: resolve the session and enforce the same role +
+      // active + MFA policy as the bearer branch (via getAdminAuthorizationFailure).
+      const session = await getSessionUser(req);
+      if (!session) {
         res.status(401).json({ error: "Authentication required" });
         return;
       }
-      if (!roles.includes(user.role) && !ADMIN_ROLES.has(user.role)) {
+      const user = session.user;
+      res.locals.user = user;
+      res.locals.sessionId = session.sessionId;
+      const failure = getAdminAuthorizationFailure(
+        { role: user.role, active: user.active, mfaEnabled: user.mfaEnabled, mfaValid: await hasValidMfaSession(req, user.id) },
+        allowedRoles,
+      );
+      if (failure === "admin_required") {
         res.status(403).json({ error: "Insufficient permissions" });
+        return;
+      }
+      if (failure === "mfa_required") {
+        res.status(403).json({ error: "MFA required", code: "MFA_REQUIRED" });
         return;
       }
       next();
@@ -231,6 +247,71 @@ export function requireAdminOrRole(...roles: string[]) {
       next(error);
     }
   };
+}
+
+/**
+ * Authorizes sensitive admin mutations through one policy: either the configured
+ * admin bearer token or an active admin session, followed by MFA when enabled.
+ * Partner credentials and editor sessions are intentionally not accepted here.
+ */
+export async function authorizeAdminMutation(req: Request, res: Response): Promise<boolean> {
+  const authorization = req.header("authorization") ?? "";
+  const hasBearer = authorization.startsWith("Bearer ");
+
+  if (hasBearer) {
+    if (!process.env["SPORTYRA_ADMIN_TOKEN"]) {
+      res.status(503).json({ error: "Admin access is not configured on the server" });
+      return false;
+    }
+    if (!hasAdminToken(req)) {
+      res.status(401).json({ error: "Unauthorized" });
+      return false;
+    }
+    const ok = await ensureAdminTokenUser(res);
+    if (!ok) {
+      res.status(503).json({ error: "No admin user is provisioned on the server" });
+      return false;
+    }
+  } else {
+    const session = await getSessionUser(req);
+    if (!session) {
+      res.status(401).json({ error: "Authentication required" });
+      return false;
+    }
+    if (session.user.role !== "admin" || !session.user.active) {
+      res.status(403).json({ error: "Admin access required" });
+      return false;
+    }
+    res.locals.user = session.user;
+    res.locals.sessionId = session.sessionId;
+  }
+
+  const admin = res.locals.user as typeof usersTable.$inferSelect | undefined;
+  const failure = getAdminAuthorizationFailure({
+    role: admin?.role,
+    active: admin?.active,
+    mfaEnabled: admin?.mfaEnabled,
+    mfaValid: admin ? await hasValidMfaSession(req, admin.id) : false,
+  });
+  if (failure === "authentication_required") {
+    res.status(401).json({ error: "Authentication required" });
+    return false;
+  }
+  if (failure === "admin_required") {
+    res.status(403).json({ error: "Admin access required" });
+    return false;
+  }
+  if (failure === "mfa_required") {
+    res.status(403).json({ error: "MFA required", code: "MFA_REQUIRED" });
+    return false;
+  }
+  return true;
+}
+
+export function requireAdminMutation(req: Request, res: Response, next: NextFunction) {
+  authorizeAdminMutation(req, res).then((authorized) => {
+    if (authorized) next();
+  }).catch(next);
 }
 
 export function hasAdminToken(req: Request) {
@@ -245,26 +326,7 @@ export function hasAdminToken(req: Request) {
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!process.env["SPORTYRA_ADMIN_TOKEN"]) {
-    res.status(503).json({ error: "Admin access is not configured on the server" });
-    return;
-  }
-  if (!hasAdminToken(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  ensureAdminTokenUser(res).then(async (ok) => {
-    if (!ok) {
-      res.status(503).json({ error: "No admin user is provisioned on the server" });
-      return;
-    }
-    const admin = res.locals.user as typeof usersTable.$inferSelect;
-    if (admin.mfaEnabled && !(await hasValidMfaSession(req, admin.id))) {
-      res.status(403).json({ error: "MFA required", code: "MFA_REQUIRED" });
-      return;
-    }
-    next();
-  }).catch(next);
+  requireAdminMutation(req, res, next);
 }
 
 export function generatePartnerSecret(): { plaintext: string; hash: string; prefix: string } {
@@ -278,7 +340,55 @@ export function hashPartnerSecret(secret: string): string {
   return crypto.createHash("sha256").update(secret).digest("hex");
 }
 
+// Partner sessions are server-side, httpOnly-cookie backed. The partner's secret is
+// exchanged once at login and is never stored in the browser after that.
+const PARTNER_SESSION_COOKIE = "sportyra_partner_session";
+const PARTNER_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+
+export async function createPartnerSession(partnerId: number, res: Response) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + PARTNER_SESSION_TTL_MS);
+  await db.insert(partnerSessionsTable).values({ partnerId, tokenHash: hashToken(token), expiresAt });
+  res.cookie(PARTNER_SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: PARTNER_SESSION_TTL_MS,
+  });
+  return expiresAt;
+}
+
+export async function destroyPartnerSession(req: Request, res: Response) {
+  const token = req.cookies?.[PARTNER_SESSION_COOKIE];
+  if (token) await db.delete(partnerSessionsTable).where(eq(partnerSessionsTable.tokenHash, hashToken(token)));
+  res.clearCookie(PARTNER_SESSION_COOKIE, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+}
+
+export async function getPartnerSession(req: Request): Promise<typeof partnersTable.$inferSelect | null> {
+  const token = req.cookies?.[PARTNER_SESSION_COOKIE];
+  if (!token) return null;
+  const [row] = await db
+    .select({ partner: partnersTable })
+    .from(partnerSessionsTable)
+    .innerJoin(partnersTable, eq(partnersTable.id, partnerSessionsTable.partnerId))
+    .where(and(eq(partnerSessionsTable.tokenHash, hashToken(token)), gt(partnerSessionsTable.expiresAt, new Date())))
+    .limit(1);
+  return row?.partner ?? null;
+}
+
 export async function getSessionPartner(req: Request) {
+  // 1. Server-side partner session cookie (SPA dashboard). The partner secret is
+  //    never stored in the browser after login.
+  const sessionPartner = await getPartnerSession(req);
+  if (sessionPartner) return sessionPartner;
+
+  // 2. Legacy header-based authentication for external/integration consumers.
   const partnerId = req.headers["x-partner-id"];
   if (!partnerId) return null;
   const id = Number(partnerId);

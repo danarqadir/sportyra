@@ -4,28 +4,38 @@ import { File, Storage } from "@google-cloud/storage";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
-function createStorageClient() {
-  const gcpProjectId = process.env.GCP_PROJECT_ID;
-  const gcpServiceAccount = process.env.GCP_SERVICE_ACCOUNT_JSON;
+function isGcpConfigured(): boolean {
+  return Boolean(process.env.GCP_PROJECT_ID && process.env.GCP_SERVICE_ACCOUNT_JSON);
+}
 
-  if (gcpProjectId && gcpServiceAccount) {
+// Storage client is created lazily so importing this module never fails when GCP
+// credentials are absent (e.g. production boots without them; storage endpoints then
+// return a clean error instead of crashing the process at module load).
+let storageClient: Storage | null = null;
+
+function getStorageClient(): Storage {
+  if (storageClient) return storageClient;
+
+  if (isGcpConfigured()) {
     let credentials: Record<string, unknown>;
     try {
-      credentials = JSON.parse(Buffer.from(gcpServiceAccount, "base64").toString("utf-8"));
+      credentials = JSON.parse(Buffer.from(process.env.GCP_SERVICE_ACCOUNT_JSON!, "base64").toString("utf-8"));
     } catch {
       throw new Error("GCP_SERVICE_ACCOUNT_JSON is not valid base64-encoded JSON");
     }
-    return new Storage({
-      projectId: gcpProjectId,
+    storageClient = new Storage({
+      projectId: process.env.GCP_PROJECT_ID,
       credentials,
     });
+    return storageClient;
   }
 
   if (process.env.NODE_ENV === "production") {
     throw new Error("GCP_PROJECT_ID and GCP_SERVICE_ACCOUNT_JSON must be set for production storage");
   }
 
-  return new Storage({
+  // Replit sidecar (development)
+  storageClient = new Storage({
     credentials: {
       audience: "replit",
       subject_token_type: "access_token",
@@ -39,9 +49,12 @@ function createStorageClient() {
     },
     projectId: "",
   });
+  return storageClient;
 }
 
-const objectStorageClient = createStorageClient();
+function stripBucketScheme(value: string): string {
+  return value.replace(/^gs:\/\//, "");
+}
 
 export class ObjectNotFoundError extends Error {
   constructor() {
@@ -54,38 +67,62 @@ export class ObjectStorageService {
   private getPrivateObjectDir() {
     const dir = process.env["PRIVATE_OBJECT_DIR"];
     if (!dir) throw new Error("PRIVATE_OBJECT_DIR is not configured");
-    return dir.replace(/\/+$/, "");
+    return stripBucketScheme(dir).replace(/\/+$/, "");
   }
 
   private getPublicObjectSearchPaths() {
     const paths = (process.env["PUBLIC_OBJECT_SEARCH_PATHS"] ?? "")
       .split(",")
-      .map((value) => value.trim())
+      .map((value) => stripBucketScheme(value.trim()))
       .filter(Boolean);
     if (!paths.length) throw new Error("PUBLIC_OBJECT_SEARCH_PATHS is not configured");
     return paths;
   }
 
+  /**
+   * Issues a signed PUT URL for a public article image. Uploads target the first
+   * configured public search path so the resulting object can be served through the
+   * unauthenticated /api/storage/public-objects/* route.
+   */
   async getObjectEntityUploadURL() {
-    const { bucketName, objectName } = parseObjectPath(
-      `${this.getPrivateObjectDir()}/uploads/${randomUUID()}`,
-    );
+    const publicPaths = this.getPublicObjectSearchPaths();
+    const { bucketName, objectName } = parseObjectPath(`${publicPaths[0]}/uploads/${randomUUID()}`);
     return signObjectURL({ bucketName, objectName, method: "PUT", ttlSec: 900 });
   }
 
+  /**
+   * Converts a GCS object URL back to an app route path.
+   * - Objects under a public search path -> /public-objects/<relative>
+   * - Objects under the private dir        -> /objects/<relative>
+   * - Anything else                         -> /<full pathname>
+   */
   normalizeObjectEntityPath(rawPath: string) {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) return rawPath;
     const url = new URL(rawPath);
-    const privateDir = `${this.getPrivateObjectDir()}/`;
-    return url.pathname.startsWith(privateDir)
-      ? `/objects/${url.pathname.slice(privateDir.length)}`
-      : url.pathname;
+    const pathname = url.pathname.replace(/^\//, "");
+
+    const publicPaths = (process.env["PUBLIC_OBJECT_SEARCH_PATHS"] ?? "")
+      .split(",")
+      .map((value) => stripBucketScheme(value.trim()))
+      .filter(Boolean);
+    for (const searchPath of publicPaths) {
+      if (pathname.startsWith(`${searchPath}/`)) {
+        return `/public-objects/${pathname.slice(searchPath.length + 1)}`;
+      }
+    }
+
+    const privateDir = stripBucketScheme(process.env["PRIVATE_OBJECT_DIR"] ?? "").replace(/\/+$/, "");
+    if (privateDir && pathname.startsWith(`${privateDir}/`)) {
+      return `/objects/${pathname.slice(privateDir.length + 1)}`;
+    }
+
+    return `/${pathname}`;
   }
 
   async searchPublicObject(filePath: string): Promise<File | null> {
     for (const searchPath of this.getPublicObjectSearchPaths()) {
       const { bucketName, objectName } = parseObjectPath(`${searchPath}/${filePath}`);
-      const file = objectStorageClient.bucket(bucketName).file(objectName);
+      const file = getStorageClient().bucket(bucketName).file(objectName);
       const [exists] = await file.exists();
       if (exists) return file;
     }
@@ -96,7 +133,7 @@ export class ObjectStorageService {
     if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
     const entityPath = `${this.getPrivateObjectDir()}/${objectPath.slice("/objects/".length)}`;
     const { bucketName, objectName } = parseObjectPath(entityPath);
-    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    const file = getStorageClient().bucket(bucketName).file(objectName);
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();
     return file;
@@ -115,7 +152,8 @@ export class ObjectStorageService {
 }
 
 function parseObjectPath(value: string) {
-  const normalized = value.startsWith("/") ? value : `/${value}`;
+  const clean = stripBucketScheme(value);
+  const normalized = clean.startsWith("/") ? clean : `/${clean}`;
   const [, bucketName, ...rest] = normalized.split("/");
   if (!bucketName || !rest.length) throw new Error("Invalid object storage path");
   return { bucketName, objectName: rest.join("/") };
@@ -132,6 +170,18 @@ async function signObjectURL({
   method: "GET" | "PUT";
   ttlSec: number;
 }) {
+  if (isGcpConfigured()) {
+    // Production: sign with the GCP service account.
+    const client = getStorageClient();
+    const [url] = await client.bucket(bucketName).file(objectName).getSignedUrl({
+      action: method === "PUT" ? "write" : "read",
+      expires: Date.now() + ttlSec * 1000,
+      version: "v4",
+    });
+    return url;
+  }
+
+  // Development / Replit sidecar.
   const response = await fetch(`${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

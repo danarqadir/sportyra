@@ -16,6 +16,7 @@ export const moderationReportsTable = pgTable("moderation_reports", {
 }, (table) => ({
   statusIdx: index("moderation_status_idx").on(table.status),
   targetTypeIdx: index("moderation_target_type_idx").on(table.targetType),
+  targetIdx: index("moderation_target_idx").on(table.targetType, table.targetId),
   reporterIdx: index("moderation_reporter_idx").on(table.reporterId),
 }));
 

@@ -7,7 +7,7 @@ import {
 } from "express";
 import { db, commentsTable, newsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, count, sql, asc } from "drizzle-orm";
-import { requireUser, hasAdminToken, requireAdminOrRole, getSessionUser } from "../lib/auth";
+import { requireUser, hasAdminToken, requireAdminOrRole, requireAdminMutation, getSessionUser } from "../lib/auth";
 import { sanitizeHtml } from "../lib/sanitize";
 import { rateLimit, adminMutationRateLimit } from "../lib/rate-limit";
 
@@ -280,7 +280,7 @@ router.get("/admin/comments", requireAdminOrRole("admin", "editor"), async (req,
   }
 });
 
-router.patch("/admin/comments/:commentId", requireAdminOrRole("admin", "editor"), adminMutationRateLimit, async (req, res, next) => {
+router.patch("/admin/comments/:commentId", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const commentId = Number(req.params.commentId);
     if (!Number.isInteger(commentId) || commentId <= 0) {

@@ -1,9 +1,11 @@
 import { integer, pgTable, serial, text, timestamp, index, unique, boolean } from "drizzle-orm/pg-core";
+import { usersTable } from "./users";
+import { matchesTable } from "./matches";
 
 export const predictionsTable = pgTable("predictions", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  matchId: integer("match_id").notNull(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  matchId: integer("match_id").notNull().references(() => matchesTable.id, { onDelete: "cascade" }),
   prediction: text("prediction").notNull(),
   homeScorePred: integer("home_score_pred"),
   awayScorePred: integer("away_score_pred"),

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, contentLabelsTable } from "@workspace/db";
 import { and, eq, desc, count, sql, gte, lte, isNull, or } from "drizzle-orm";
-import { requireAdmin } from "../lib/auth";
+import { requireAdmin, requireAdminMutation } from "../lib/auth";
 import { rateLimit, adminMutationRateLimit } from "../lib/rate-limit";
 
 const router = Router();
@@ -57,7 +57,7 @@ router.get("/content-labels/:newsId", async (req, res, next): Promise<void> => {
   } catch (error) { next(error); }
 });
 
-router.post("/admin/content-labels", requireAdmin, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
+router.post("/admin/content-labels", requireAdminMutation, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
   try {
     const body = req.body as Record<string, unknown>;
     const newsId = Number.isInteger(body.newsId) ? Number(body.newsId) : null;
@@ -97,7 +97,7 @@ router.post("/admin/content-labels", requireAdmin, rateLimit({ windowMs: 60_000,
   } catch (error) { next(error); }
 });
 
-router.patch("/admin/content-labels/:id", requireAdmin, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
+router.patch("/admin/content-labels/:id", requireAdminMutation, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -131,7 +131,7 @@ router.patch("/admin/content-labels/:id", requireAdmin, rateLimit({ windowMs: 60
   } catch (error) { next(error); }
 });
 
-router.delete("/admin/content-labels/:id", requireAdmin, adminMutationRateLimit, async (req, res, next): Promise<void> => {
+router.delete("/admin/content-labels/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid ID" }); return; }

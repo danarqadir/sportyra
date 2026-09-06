@@ -19,7 +19,7 @@ import {
 } from "express";
 import { db, newsTable } from "@workspace/db";
 import { notifyFollowers } from "../lib/notify";
-import { hasAdminToken, requireAdmin } from "../lib/auth";
+import { hasAdminToken, requireAdmin, requireAdminMutation } from "../lib/auth";
 import { rateLimit, adminMutationRateLimit } from "../lib/rate-limit";
 import { broadcastNotification } from "../lib/notifications";
 import { sanitizeHtml } from "../lib/sanitize";
@@ -328,7 +328,7 @@ router.get("/news/feed", publicRateLimit, async (req, res, next): Promise<void> 
   }
 });
 
-router.post("/news", requireAdmin, adminMutationRateLimit, async (req, res): Promise<void> => {
+router.post("/news", requireAdminMutation, adminMutationRateLimit, async (req, res): Promise<void> => {
   const parsed = CreateNewsBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -507,7 +507,7 @@ router.get(
   },
 );
 
-router.patch("/news/:id", requireAdmin, adminMutationRateLimit, async (req, res): Promise<void> => {
+router.patch("/news/:id", requireAdminMutation, adminMutationRateLimit, async (req, res): Promise<void> => {
   const params = UpdateNewsParams.safeParse({ id: parseId(req.params.id) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -544,7 +544,7 @@ router.patch("/news/:id", requireAdmin, adminMutationRateLimit, async (req, res)
   res.json(UpdateNewsResponse.parse(enrichArticle(article)));
 });
 
-router.delete("/news/:id", requireAdmin, adminMutationRateLimit, async (req, res): Promise<void> => {
+router.delete("/news/:id", requireAdminMutation, adminMutationRateLimit, async (req, res): Promise<void> => {
   const params = DeleteNewsParams.safeParse({ id: parseId(req.params.id) });
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -564,7 +564,7 @@ router.delete("/news/:id", requireAdmin, adminMutationRateLimit, async (req, res
 
 router.post(
   "/news/:id/publish",
-  requireAdmin,
+  requireAdminMutation,
   adminMutationRateLimit,
   async (req, res): Promise<void> => {
     const params = PublishNewsParams.safeParse({ id: parseId(req.params.id) });
@@ -605,7 +605,7 @@ router.post(
 
 router.post(
   "/news/:id/feature",
-  requireAdmin,
+  requireAdminMutation,
   adminMutationRateLimit,
   async (req, res): Promise<void> => {
     const params = FeatureNewsParams.safeParse({ id: parseId(req.params.id) });
@@ -649,7 +649,7 @@ router.get("/admin/news/reviews", requireAdmin, async (req, res, next): Promise<
   } catch (error) { next(error); }
 });
 
-router.post("/admin/news/:id/approve", requireAdmin, adminMutationRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/news/:id/approve", requireAdminMutation, adminMutationRateLimit, async (req, res, next): Promise<void> => {
   try {
     const id = parseId(req.params.id);
     const [article] = await db
@@ -662,7 +662,7 @@ router.post("/admin/news/:id/approve", requireAdmin, adminMutationRateLimit, asy
   } catch (error) { next(error); }
 });
 
-router.post("/admin/news/:id/reject", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/admin/news/:id/reject", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = parseId(req.params.id);
     const body = req.body as Record<string, unknown> | undefined;

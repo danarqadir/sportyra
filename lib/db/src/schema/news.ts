@@ -1,5 +1,7 @@
 import { createInsertSchema } from "drizzle-zod";
 import { boolean, integer, pgTable, serial, text, timestamp, index } from "drizzle-orm/pg-core";
+import { partnersTable } from "./partners";
+import { usersTable } from "./users";
 
 export const newsTable = pgTable("news", {
   id: serial("id").primaryKey(),
@@ -20,9 +22,9 @@ export const newsTable = pgTable("news", {
   featured: boolean("featured").notNull().default(false),
   published: boolean("published").notNull().default(false),
   status: text("status").notNull().default("draft"),
-  partnerId: integer("partner_id"),
+  partnerId: integer("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
   reviewNote: text("review_note"),
-  reviewedBy: integer("reviewed_by"),
+  reviewedBy: integer("reviewed_by").references(() => usersTable.id, { onDelete: "set null" }),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   isSponsored: boolean("is_sponsored").notNull().default(false),
   sponsorName: text("sponsor_name"),
@@ -39,6 +41,7 @@ export const newsTable = pgTable("news", {
   publishedIdx: index("news_published_idx").on(table.published),
   statusIdx: index("news_status_idx").on(table.status),
   partnerIdIdx: index("news_partner_id_idx").on(table.partnerId),
+  reviewedByIdx: index("news_reviewed_by_idx").on(table.reviewedBy),
   contentTypeIdx: index("news_content_type_idx").on(table.contentType),
   sponsoredIdx: index("news_sponsored_idx").on(table.isSponsored),
 }));

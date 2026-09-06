@@ -1,10 +1,11 @@
 import { Router, type Request } from "express";
 import { and, eq, sql, desc, gte, lte, count, ilike, or } from "drizzle-orm";
 import { db, partnersTable, referralLinksTable, referralClicksTable, referralEventsTable, creatorEarningsLedgerTable, payoutsTable, usersTable, newsTable, auditLogTable } from "@workspace/db";
-import { hasAdminToken, requirePartner, requirePartnerOrAdmin, generatePartnerSecret, hashPartnerSecret, ensureAdminTokenUser } from "../lib/auth";
+import { requireAdminMutation, requirePartner, generatePartnerSecret, hashPartnerSecret, createPartnerSession, destroyPartnerSession, normalizeEmail } from "../lib/auth";
 import { rateLimit } from "../lib/rate-limit";
 import { ClientError } from "../lib/errors";
 import { enrichEvent } from "../lib/enrichment";
+import { getClientIp } from "../lib/client-ip";
 import { evaluateFraud, type RuleContext } from "../lib/fraud-engine";
 import { logger } from "../lib/logger";
 import crypto from "node:crypto";
@@ -17,6 +18,49 @@ const profileRateLimit = rateLimit({ windowMs: 60_000, max: 10 });
 const linkRateLimit = rateLimit({ windowMs: 60_000, max: 10 });
 const adminPartnerRateLimit = rateLimit({ windowMs: 60_000, max: 30 });
 const payoutRateLimit = rateLimit({ windowMs: 60_000, max: 10 });
+const partnerLoginRateLimit = rateLimit({ windowMs: 15 * 60_000, max: 10 });
+
+// Establishes a server-side partner session cookie after verifying the partner's
+// secret. The secret is exchanged once over HTTPS and is never stored in the
+// browser or logged.
+router.post("/partners/login", partnerLoginRateLimit, async (req, res, next): Promise<void> => {
+  try {
+    const email = normalizeEmail(String((req.body as Record<string, unknown>)?.email ?? ""));
+    const secret = typeof (req.body as Record<string, unknown>)?.secret === "string" ? (req.body as Record<string, unknown>).secret as string : "";
+    if (!email || !secret) {
+      res.status(400).json({ error: "Email and partner secret are required" });
+      return;
+    }
+    const [partner] = await db.select().from(partnersTable).where(eq(partnersTable.email, email)).limit(1);
+    if (!partner || !partner.secretHash) {
+      res.status(401).json({ error: "Invalid email or partner secret" });
+      return;
+    }
+    const provided = Buffer.from(hashPartnerSecret(secret));
+    const stored = Buffer.from(partner.secretHash);
+    const match = provided.length === stored.length && crypto.timingSafeEqual(provided, stored);
+    if (!match) {
+      logger.info({ partnerId: partner.id, action: "partner_login_failed" }, "Partner login failed");
+      res.status(401).json({ error: "Invalid email or partner secret" });
+      return;
+    }
+    if (partner.status !== "approved" && partner.status !== "active") {
+      res.status(403).json({ error: "Partner account not approved" });
+      return;
+    }
+    await createPartnerSession(partner.id, res);
+    logger.info({ partnerId: partner.id, action: "partner_login_success" }, "Partner login successful");
+    const { secretHash: _secretHash, secretPrefix: _secretPrefix, ...safe } = partner;
+    res.json(safe);
+  } catch (error) { next(error); }
+});
+
+router.post("/partners/logout", async (req, res, next): Promise<void> => {
+  try {
+    await destroyPartnerSession(req, res);
+    res.status(204).send();
+  } catch (error) { next(error); }
+});
 
 function generateReferralCode(): string {
   return `sr_${crypto.randomBytes(6).toString("base64url")}`;
@@ -27,8 +71,7 @@ function hashFingerprint(fp: string): string {
 }
 
 function getIp(req: Request): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  return (typeof forwarded === "string" ? forwarded.split(",")[0]?.trim() : null) || req.socket?.remoteAddress || "";
+  return getClientIp({ ip: req.ip, socket: req.socket });
 }
 
 function hashIp(ip: string): string {
@@ -499,12 +542,9 @@ router.get("/partners/:identifier/articles", async (req, res, next): Promise<voi
   } catch (error) { next(error); }
 });
 
-router.post("/admin/partners/:id/approve", adminPartnerRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/partners/:id/approve", adminPartnerRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
-    const ok1 = await ensureAdminTokenUser(res);
-    if (!ok1) { res.status(401).json({ error: "Admin authentication required" }); return; }
     const [partner] = await db.select().from(partnersTable).where(eq(partnersTable.id, id)).limit(1);
     if (!partner) { res.status(404).json({ error: "Partner not found" }); return; }
     if (partner.status === "approved") { res.status(400).json({ error: "Partner already approved" }); return; }
@@ -518,14 +558,11 @@ router.post("/admin/partners/:id/approve", adminPartnerRateLimit, async (req, re
   } catch (error) { next(error); }
 });
 
-router.post("/admin/partners/:id/reject", adminPartnerRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/partners/:id/reject", adminPartnerRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
     const body = req.body as Record<string, unknown>;
     const reason = (body.reason as string) || "";
-    const ok2 = await ensureAdminTokenUser(res);
-    if (!ok2) { res.status(401).json({ error: "Admin authentication required" }); return; }
     const [partner] = await db.select().from(partnersTable).where(eq(partnersTable.id, id)).limit(1);
     if (!partner) { res.status(404).json({ error: "Partner not found" }); return; }
     if (partner.status === "rejected") { res.status(400).json({ error: "Partner already rejected" }); return; }
@@ -537,14 +574,11 @@ router.post("/admin/partners/:id/reject", adminPartnerRateLimit, async (req, res
   } catch (error) { next(error); }
 });
 
-router.post("/admin/partners/:id/suspend", adminPartnerRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/partners/:id/suspend", adminPartnerRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
     const body = req.body as Record<string, unknown>;
     const reason = (body.reason as string) || "";
-    const ok3 = await ensureAdminTokenUser(res);
-    if (!ok3) { res.status(401).json({ error: "Admin authentication required" }); return; }
     const [partner] = await db.select().from(partnersTable).where(eq(partnersTable.id, id)).limit(1);
     if (!partner) { res.status(404).json({ error: "Partner not found" }); return; }
     if (partner.status === "suspended") { res.status(400).json({ error: "Partner already suspended" }); return; }
@@ -556,12 +590,9 @@ router.post("/admin/partners/:id/suspend", adminPartnerRateLimit, async (req, re
   } catch (error) { next(error); }
 });
 
-router.post("/admin/partners/:id/reactivate", adminPartnerRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/partners/:id/reactivate", adminPartnerRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
-    const ok4 = await ensureAdminTokenUser(res);
-    if (!ok4) { res.status(401).json({ error: "Admin authentication required" }); return; }
     const [partner] = await db.select().from(partnersTable).where(eq(partnersTable.id, id)).limit(1);
     if (!partner) { res.status(404).json({ error: "Partner not found" }); return; }
     if (partner.status === "approved") { res.status(400).json({ error: "Partner already active" }); return; }
@@ -575,12 +606,9 @@ router.post("/admin/partners/:id/reactivate", adminPartnerRateLimit, async (req,
   } catch (error) { next(error); }
 });
 
-router.post("/admin/partners/:id/rotate-secret", adminPartnerRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/partners/:id/rotate-secret", adminPartnerRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
-    const ok5 = await ensureAdminTokenUser(res);
-    if (!ok5) { res.status(401).json({ error: "Admin authentication required" }); return; }
     const [partner] = await db.select().from(partnersTable).where(eq(partnersTable.id, id)).limit(1);
     if (!partner) { res.status(404).json({ error: "Partner not found" }); return; }
     if (partner.status !== "approved") { res.status(400).json({ error: "Partner must be approved" }); return; }
@@ -591,18 +619,16 @@ router.post("/admin/partners/:id/rotate-secret", adminPartnerRateLimit, async (r
   } catch (error) { next(error); }
 });
 
-router.get("/admin/partners", async (req, res, next): Promise<void> => {
+router.get("/admin/partners", requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
     const partners = await db.select().from(partnersTable).orderBy(desc(partnersTable.createdAt)).limit(limit);
     res.json({ items: partners.map(({ secretHash: _sh, secretPrefix: _sp, ...safe }) => safe), total: partners.length });
   } catch (error) { next(error); }
 });
 
-router.post("/admin/partners", adminPartnerRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/partners", adminPartnerRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const parsed = AdminPartnerCreate.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: "Invalid input", details: parsed.error.flatten() }); return; }
     const { name, email, website, description: bio, avatar, commissionRate, status } = parsed.data;
@@ -613,9 +639,8 @@ router.post("/admin/partners", adminPartnerRateLimit, async (req, res, next): Pr
   } catch (error) { next(error); }
 });
 
-router.patch("/admin/partners/:id", adminPartnerRateLimit, async (req, res, next): Promise<void> => {
+router.patch("/admin/partners/:id", adminPartnerRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
     const body = req.body as Record<string, unknown>;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -647,9 +672,8 @@ router.patch("/admin/partners/:id", adminPartnerRateLimit, async (req, res, next
   } catch (error) { next(error); }
 });
 
-router.get("/admin/partners/stats", async (req, res, next): Promise<void> => {
+router.get("/admin/partners/stats", requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const { from, to } = parseDateRange(req.query as Record<string, unknown>);
 
     const [totalPartners] = await db.select({ total: sql<number>`COUNT(*)::int` }).from(partnersTable);
@@ -704,9 +728,8 @@ router.get("/admin/partners/stats", async (req, res, next): Promise<void> => {
   } catch (error) { next(error); }
 });
 
-router.get("/admin/partners/:id/clicks", async (req, res, next): Promise<void> => {
+router.get("/admin/partners/:id/clicks", requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
     const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
     const { from, to } = parseDateRange(req.query as Record<string, unknown>);
@@ -716,9 +739,8 @@ router.get("/admin/partners/:id/clicks", async (req, res, next): Promise<void> =
   } catch (error) { next(error); }
 });
 
-router.get("/admin/partners/:id/earnings", async (req, res, next): Promise<void> => {
+router.get("/admin/partners/:id/earnings", requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const id = Number(req.params.id);
     const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
     const { from, to } = parseDateRange(req.query as Record<string, unknown>);
@@ -728,9 +750,8 @@ router.get("/admin/partners/:id/earnings", async (req, res, next): Promise<void>
   } catch (error) { next(error); }
 });
 
-router.post("/admin/partners/payouts", payoutRateLimit, async (req, res, next): Promise<void> => {
+router.post("/admin/partners/payouts", payoutRateLimit, requireAdminMutation, async (req, res, next): Promise<void> => {
   try {
-    if (!hasAdminToken(req)) { res.status(403).json({ error: "Admin access required" }); return; }
     const body = req.body as Record<string, unknown>;
     const partnerId = Number(body.partnerId);
     const amount = String(body.amount || "0");
@@ -754,8 +775,7 @@ router.post("/admin/partners/payouts", payoutRateLimit, async (req, res, next): 
       await tx.update(partnersTable).set({ paidEarnings: sql`${partnersTable.paidEarnings} + ${amount}`, updatedAt: new Date() }).where(eq(partnersTable.id, partnerId));
       return payout;
     });
-    const ok6 = await ensureAdminTokenUser(res);
-    if (ok6 && res.locals.user) {
+    if (res.locals.user) {
       await db.insert(auditLogTable).values({ userId: res.locals.user.id, action: "payout_created", targetType: "partner", targetId: partnerId, details: `$${amount} to partner via ${method}` }).catch(() => {});
     }
     res.status(201).json(result);

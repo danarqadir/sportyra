@@ -1,5 +1,6 @@
 import type { Request } from "express"
 import crypto from "node:crypto"
+import { getClientIp } from "./client-ip"
 
 export interface EnrichedEvent {
   clientIpHash: string
@@ -31,16 +32,7 @@ const BOT_PATTERNS = [
 const UA_BOT_RE = new RegExp(BOT_PATTERNS.join("|"), "i")
 
 export function getIp(req: Request): string {
-  const forwarded = req.headers["x-forwarded-for"]
-  if (typeof forwarded === "string") {
-    const first = forwarded.split(",")[0]?.trim()
-    if (first) return first
-  }
-  if (Array.isArray(forwarded)) {
-    const first = forwarded[0]?.trim()
-    if (first) return first
-  }
-  return req.socket.remoteAddress || req.ip || "0.0.0.0"
+  return getClientIp({ ip: req.ip, socket: req.socket });
 }
 
 export function hashIp(ip: string): string {

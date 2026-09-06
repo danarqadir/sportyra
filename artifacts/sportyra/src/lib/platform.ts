@@ -314,6 +314,8 @@ function dateRangeParams(from?: string, to?: string) {
 }
 
 export const partnerApi = {
+  login: (email: string, secret: string) => request<any>("/api/partners/login", { method: "POST", body: JSON.stringify({ email, secret }) }),
+  logout: () => request<void>("/api/partners/logout", { method: "POST" }),
   search: (search?: string, limit?: number) => request<{ items: Array<{ id: number; name: string; bio: string | null; avatar: string | null; website: string | null; totalClicks: number; createdAt: string }>; total: number }>(`/api/partners/search${search ? `?search=${encodeURIComponent(search)}${limit ? `&limit=${limit}` : ""}` : limit ? `?limit=${limit}` : ""}`),
   recordClick: (code: string, data?: { fingerprint?: string; url?: string }) => request<{ ok: boolean; deduplicated?: boolean }>(`/api/ref/${encodeURIComponent(code)}`, { method: "POST", body: JSON.stringify(data || {}) }),
   me: () => request<any>("/api/partners/me"),

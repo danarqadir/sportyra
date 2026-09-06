@@ -2,12 +2,13 @@ import { Readable } from "node:stream";
 import { RequestUploadUrlBody, RequestUploadUrlResponse } from "@workspace/api-zod";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { ObjectNotFoundError, ObjectStorageService } from "../lib/objectStorage";
-import { requireAdmin } from "../lib/auth";
+import { requireAdmin, requireAdminMutation } from "../lib/auth";
+import { isSafeObjectPath } from "../lib/object-path";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
-router.post("/storage/uploads/request-url", requireAdmin, async (req, res): Promise<void> => {
+router.post("/storage/uploads/request-url", requireAdminMutation, async (req, res): Promise<void> => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success || !parsed.data.contentType.startsWith("image/") || parsed.data.size > 10_000_000) {
     res.status(400).json({ error: "Upload an image smaller than 10 MB." });
@@ -32,6 +33,10 @@ router.get("/storage/public-objects/*filePath", async (req, res): Promise<void> 
   try {
     const raw = req.params.filePath;
     const filePath = Array.isArray(raw) ? raw.join("/") : raw;
+    if (!isSafeObjectPath(filePath)) {
+      res.status(400).json({ error: "Invalid object path" });
+      return;
+    }
     const file = await objectStorageService.searchPublicObject(filePath);
     if (!file) {
       res.status(404).json({ error: "File not found" });
@@ -52,6 +57,10 @@ router.get("/storage/objects/*path", requireAdmin, async (req, res): Promise<voi
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    if (!isSafeObjectPath(wildcardPath)) {
+      res.status(400).json({ error: "Invalid object path" });
+      return;
+    }
     const objectFile = await objectStorageService.getObjectEntityFile(`/objects/${wildcardPath}`);
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);

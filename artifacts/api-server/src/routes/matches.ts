@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, matchesTable, matchEventsTable, matchStatsTable, matchLineupsTable } from "@workspace/db";
 import { eq, desc, asc, and, gte, lte, sql, or, ilike } from "drizzle-orm";
-import { requireAdmin } from "../lib/auth";
+import { requireAdmin, requireAdminMutation } from "../lib/auth";
 import { MatchCreate, MatchUpdate, MatchEventCreate } from "../lib/validation";
 import { adminMutationRateLimit } from "../lib/rate-limit";
 
@@ -43,7 +43,7 @@ router.get("/matches/:id", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post("/matches", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/matches", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const parsed = MatchCreate.safeParse(req.body);
     if (!parsed.success) {
@@ -61,7 +61,7 @@ router.post("/matches", requireAdmin, adminMutationRateLimit, async (req, res, n
   } catch (error) { next(error); }
 });
 
-router.patch("/matches/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.patch("/matches/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid match id" }); return; }
@@ -79,7 +79,7 @@ router.patch("/matches/:id", requireAdmin, adminMutationRateLimit, async (req, r
   } catch (error) { next(error); }
 });
 
-router.post("/matches/:id/events", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/matches/:id/events", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const matchId = Number(req.params.id);
     if (!Number.isInteger(matchId) || matchId <= 0) { res.status(400).json({ error: "Invalid match id" }); return; }
@@ -93,7 +93,7 @@ router.post("/matches/:id/events", requireAdmin, adminMutationRateLimit, async (
   } catch (error) { next(error); }
 });
 
-router.delete("/matches/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.delete("/matches/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid match id" }); return; }

@@ -53,8 +53,8 @@ check-db.js
 # Local start helper containing credentials (do not commit)
 start-server.ps1
 
-# Generated drizzle metadata
-lib/db/drizzle/
+# Stray drizzle-kit output from running at the repo root (real out dir: lib/db/drizzle)
+/drizzle/
 
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md

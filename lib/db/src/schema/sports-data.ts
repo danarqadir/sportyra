@@ -1,4 +1,5 @@
 import { integer, pgTable, serial, text, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { newsTable } from "./news";
 
 export const sportsDataCacheTable = pgTable("sports_data_cache", {
   id: serial("id").primaryKey(),
@@ -25,7 +26,7 @@ export const importedArticlesTable = pgTable("imported_articles", {
   imageUrl: text("image_url"),
   publicationDate: timestamp("publication_date", { withTimezone: true }),
   status: text("status").notNull().default("pending"),
-  newsId: integer("news_id"),
+  newsId: integer("news_id").references(() => newsTable.id, { onDelete: "set null" }),
   importedBy: text("imported_by"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -34,6 +35,7 @@ export const importedArticlesTable = pgTable("imported_articles", {
   statusIdx: index("imported_articles_status_idx").on(table.status),
   sourceIdx: index("imported_articles_source_idx").on(table.sourceName),
   originalUrlIdx: index("imported_articles_url_idx").on(table.originalUrl),
+  newsIdIdx: index("imported_articles_news_id_idx").on(table.newsId),
 }));
 
 export type SportsDataCache = typeof sportsDataCacheTable.$inferSelect;

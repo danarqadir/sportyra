@@ -1,4 +1,6 @@
 import { integer, pgTable, serial, text, timestamp, index } from "drizzle-orm/pg-core";
+import { newsTable } from "./news";
+import { partnersTable } from "./partners";
 
 export const analyticsEventsTable = pgTable(
   "analytics_events",
@@ -6,11 +8,11 @@ export const analyticsEventsTable = pgTable(
     id: serial("id").primaryKey(),
     eventType: text("event_type").notNull(),
     path: text("path").notNull(),
-    articleId: integer("article_id"),
+    articleId: integer("article_id").references(() => newsTable.id, { onDelete: "set null" }),
     referrer: text("referrer"),
     userAgent: text("user_agent"),
     sessionId: text("session_id"),
-    partnerId: integer("partner_id"),
+    partnerId: integer("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
     referralCode: text("referral_code"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

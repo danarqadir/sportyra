@@ -1,4 +1,4 @@
-import { integer, pgTable, serial, text, timestamp, index, boolean } from "drizzle-orm/pg-core";
+import { integer, pgTable, serial, text, timestamp, index, boolean, foreignKey } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 import { newsTable } from "./news";
 
@@ -21,6 +21,8 @@ export const commentsTable = pgTable("comments", {
   userIdIdx: index("comments_user_id_idx").on(table.userId),
   approvedIdx: index("comments_approved_idx").on(table.approved),
   reportedIdx: index("comments_reported_idx").on(table.reported),
+  parentIdIdx: index("comments_parent_id_idx").on(table.parentId),
+  parentFk: foreignKey({ columns: [table.parentId], foreignColumns: [table.id], name: "comments_parent_id_comments_id_fk" }).onDelete("set null"),
 }));
 
 export type Comment = typeof commentsTable.$inferSelect;

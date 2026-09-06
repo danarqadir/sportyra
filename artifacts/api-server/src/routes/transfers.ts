@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, transfersTable } from "@workspace/db";
 import { eq, desc, asc, ilike, or, and, sql } from "drizzle-orm";
-import { requireAdmin } from "../lib/auth";
+import { requireAdminMutation } from "../lib/auth";
 import { TransferCreate, TransferUpdate } from "../lib/validation";
 import { adminMutationRateLimit } from "../lib/rate-limit";
 import { enrichTransfers } from "../lib/transfer-images";
@@ -34,7 +34,7 @@ router.get("/transfers/:id", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post("/transfers", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/transfers", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const parsed = TransferCreate.safeParse(req.body);
     if (!parsed.success) {
@@ -50,7 +50,7 @@ router.post("/transfers", requireAdmin, adminMutationRateLimit, async (req, res,
   } catch (error) { next(error); }
 });
 
-router.patch("/transfers/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.patch("/transfers/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid transfer id" }); return; }
@@ -70,7 +70,7 @@ router.patch("/transfers/:id", requireAdmin, adminMutationRateLimit, async (req,
   } catch (error) { next(error); }
 });
 
-router.delete("/transfers/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.delete("/transfers/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid transfer id" }); return; }

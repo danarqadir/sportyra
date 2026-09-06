@@ -1,8 +1,9 @@
 import { integer, jsonb, pgTable, serial, text, timestamp, index, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { competitionsTable, teamsTable } from "./fixtures";
 
 export const matchEventsTable = pgTable("match_events", {
   id: serial("id").primaryKey(),
-  matchId: integer("match_id").notNull(),
+  matchId: integer("match_id").notNull().references(() => matchesTable.id, { onDelete: "cascade" }),
   eventType: text("event_type").notNull(),
   minute: integer("minute"),
   playerId: integer("player_id"),
@@ -18,7 +19,7 @@ export const matchEventsTable = pgTable("match_events", {
 
 export const matchStatsTable = pgTable("match_statistics", {
   id: serial("id").primaryKey(),
-  matchId: integer("match_id").notNull().unique(),
+  matchId: integer("match_id").notNull().unique().references(() => matchesTable.id, { onDelete: "cascade" }),
   possession: jsonb("possession"),
   shots: jsonb("shots"),
   shotsOnTarget: jsonb("shots_on_target"),
@@ -32,7 +33,7 @@ export const matchStatsTable = pgTable("match_statistics", {
 
 export const matchLineupsTable = pgTable("match_lineups", {
   id: serial("id").primaryKey(),
-  matchId: integer("match_id").notNull(),
+  matchId: integer("match_id").notNull().references(() => matchesTable.id, { onDelete: "cascade" }),
   teamSide: text("team_side").notNull(),
   formation: text("formation"),
   lineup: jsonb("lineup"),
@@ -42,9 +43,9 @@ export const matchLineupsTable = pgTable("match_lineups", {
 
 export const matchesTable = pgTable("matches", {
   id: serial("id").primaryKey(),
-  competitionId: integer("competition_id"),
-  homeTeamId: integer("home_team_id"),
-  awayTeamId: integer("away_team_id"),
+  competitionId: integer("competition_id").references(() => competitionsTable.id, { onDelete: "set null" }),
+  homeTeamId: integer("home_team_id").references(() => teamsTable.id, { onDelete: "set null" }),
+  awayTeamId: integer("away_team_id").references(() => teamsTable.id, { onDelete: "set null" }),
   homeTeamName: text("home_team_name").notNull(),
   awayTeamName: text("away_team_name").notNull(),
   homeTeamLogo: text("home_team_logo"),
@@ -64,6 +65,9 @@ export const matchesTable = pgTable("matches", {
 }, (table) => ({
   statusIdx: index("matches_status_idx").on(table.status),
   dateIdx: index("matches_date_idx").on(table.matchDate),
+  competitionIdx: index("matches_competition_idx").on(table.competitionId),
+  homeTeamIdx: index("matches_home_team_idx").on(table.homeTeamId),
+  awayTeamIdx: index("matches_away_team_idx").on(table.awayTeamId),
   apiIdIdx: uniqueIndex("matches_api_id_idx").on(table.apiId),
 }));
 

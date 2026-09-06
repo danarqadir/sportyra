@@ -10,6 +10,10 @@
     "start": "pnpm --filter @workspace/api-server start",
     "start:production": "node artifacts/api-server/dist/index.mjs",
     "build:production": "pnpm run typecheck && pnpm --filter @workspace/sportyra build && pnpm --filter @workspace/api-server build",
+    "db:generate": "pnpm --filter @workspace/db generate",
+    "db:migrate": "pnpm --filter @workspace/db migrate",
+    "db:migrate:deploy": "pnpm --filter @workspace/db migrate:deploy",
+    "db:check": "pnpm --filter @workspace/db check",
     "db:push": "pnpm --filter @workspace/db push",
     "test": "pnpm --filter @workspace/api-server test"
   },

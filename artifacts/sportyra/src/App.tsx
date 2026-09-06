@@ -299,30 +299,10 @@ function useSeo({ title, description, image, canonical, jsonLd, publishedTime, m
     let canonicalLink = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
     if (!canonicalLink) { canonicalLink = document.createElement("link"); canonicalLink.rel = "canonical"; document.head.appendChild(canonicalLink); }
     canonicalLink.href = canonicalFull;
-    // Hreflang tags for multi-language support (EN/AR/KU)
-    const langs = ["en", "ar", "ku"];
-    const basePath = cleanCanonical;
-    langs.forEach((lng) => {
-      const href = basePath.startsWith("http") ? basePath.replace(/^https?:\/\/[^/]+/, `${window.location.origin}/${lng === "en" ? "" : lng}`) : `${window.location.origin}/${lng === "en" ? "" : lng}${basePath}`;
-      const selector = `link[rel="alternate"][hreflang="${lng}"]`;
-      let link = document.head.querySelector<HTMLLinkElement>(selector);
-      if (!link) {
-        link = document.createElement("link");
-        link.rel = "alternate";
-        link.hreflang = lng;
-        document.head.appendChild(link);
-      }
-      link.href = href;
-    });
-    // x-default
-    let xDefaultLink = document.head.querySelector<HTMLLinkElement>('link[rel="alternate"][hreflang="x-default"]');
-    if (!xDefaultLink) {
-      xDefaultLink = document.createElement("link");
-      xDefaultLink.rel = "alternate";
-      xDefaultLink.hreflang = "x-default";
-      document.head.appendChild(xDefaultLink);
-    }
-    xDefaultLink.href = `${window.location.origin}${basePath}`;
+    // Hreflang alternates are intentionally omitted: the app uses in-page language
+    // switching on a single URL set (no /ar/... or /ku/... prefixed routes exist),
+    // so hreflang links would point to pages that do not resolve. The html lang
+    // attribute and dir are set per rendered language instead.
     // Breadcrumb structured data
     if (breadcrumbs && breadcrumbs.length > 0) {
       const breadcrumbJsonLd = {
@@ -359,11 +339,6 @@ function useSeo({ title, description, image, canonical, jsonLd, publishedTime, m
     return () => {
       document.head.querySelector('script[data-sportyra-jsonld]')?.remove();
       document.head.querySelector('script[data-sportyra-breadcrumb]')?.remove();
-      // Clean up hreflang tags on unmount (optional, but good practice)
-      langs.forEach((lng) => {
-        document.head.querySelector(`link[rel="alternate"][hreflang="${lng}"]`)?.remove();
-      });
-      document.head.querySelector('link[rel="alternate"][hreflang="x-default"]')?.remove();
     };
   }, [title, description, image, canonical, jsonLd, publishedTime, modifiedTime, breadcrumbs]);
 }
@@ -387,7 +362,7 @@ function Logo() {
 
 function DarkModeToggle({ dark, setDark }: { dark: boolean; setDark: (v: boolean) => void }) {
   const t = copy.en;
-  return <button onClick={() => setDark(!dark)} title={dark ? t.lightMode : t.darkMode} aria-label={dark ? t.lightMode : t.darkMode} className="hidden h-10 w-10 items-center justify-center border border-[hsl(var(--foreground)/.18)] sm:flex">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>;
+  return <button onClick={() => setDark(!dark)} title={dark ? t.lightMode : t.darkMode} aria-label={dark ? t.lightMode : t.darkMode} className="hidden h-10 w-10 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] sm:flex">{dark ? <Sun size={16} /> : <Moon size={16} />}</button>;
 }
 
 function NotificationButton({ lang }: { lang: Lang }) {
@@ -497,12 +472,12 @@ function Header({ lang, setLang, onSearch, dark, setDark }: { lang: Lang; setLan
   const [notifOpen, setNotifOpen] = useState(false);
   const unreadCountQ = useQuery({ queryKey: ["notification-count"], queryFn: () => notificationsApi.count(), refetchInterval: 30_000 });
   const unreadCount = unreadCountQ.data?.unread ?? 0;
-  return <header className="sticky top-0 z-30 border-b border-[hsl(var(--foreground)/.15)] bg-[hsl(var(--background)/.94)] backdrop-blur-md">
-    <div className="mx-auto flex h-[70px] max-w-[1440px] items-center justify-between gap-4 px-5 lg:px-12">
-      <a href="/" aria-label="Sportyra"><Logo /></a>
-      <nav className="hidden items-center gap-7 lg:flex">{[
+  return <header className="sticky top-0 z-30 border-b border-[hsl(var(--border))] bg-[hsl(var(--background)/.92)] shadow-[var(--shadow-xs)] backdrop-blur-md">
+    <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-4 px-5 lg:h-[72px] lg:px-12">
+      <a href="/" aria-label="Sportyra" className="shrink-0"><Logo /></a>
+      <nav className="hidden items-center gap-8 lg:flex">{[
         { href: "/#latest", label: t.latest },
-        { href: "/#football", label: "Football" },
+        { href: "/category/football", label: "Football" },
         { href: "/live-scores", label: t.liveScores },
         { href: "/transfers", label: t.transfers },
         { href: "/players", label: t.players },
@@ -510,42 +485,57 @@ function Header({ lang, setLang, onSearch, dark, setDark }: { lang: Lang; setLan
         { href: "/teams", label: t.teams },
         { href: "/standings", label: t.standings },
       ].map((link) =>
-        <a key={link.href} href={link.href} className="nav-link text-[11px] font-bold uppercase tracking-[.12em] text-[hsl(var(--foreground)/.75)]">
+        <a key={link.href} href={link.href} className="nav-link text-[11px] font-bold uppercase tracking-[.12em] text-[hsl(var(--foreground)/.75)] transition-colors hover:text-[hsl(var(--foreground))]">
           {link.label}
         </a>)}</nav>
       <div className="flex items-center gap-2">
-        <button onClick={onSearch} className="hidden h-10 w-10 items-center justify-center border border-[hsl(var(--foreground)/.18)] sm:flex" aria-label={t.search}><Search size={17} /></button>
-        <a href="/admin" className="hidden h-10 items-center gap-2 border border-[hsl(var(--foreground)/.18)] px-3 text-[10px] font-bold uppercase sm:flex"><LayoutDashboard size={14} />{t.admin}</a><a href="/account" className="hidden h-10 items-center border border-[hsl(var(--foreground)/.18)] px-3 text-[10px] font-bold uppercase sm:flex">{t.account}</a>
-        <button onClick={() => setNotifOpen(true)} className="relative flex h-10 w-10 items-center justify-center border border-[hsl(var(--foreground)/.18)]" aria-label="Notifications"><Bell size={17} />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] text-[8px] font-bold text-white">{unreadCount > 9 ? "9+" : unreadCount}</span>}</button>
+        <button onClick={onSearch} className="hidden h-10 w-10 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] sm:flex" aria-label={t.search}><Search size={17} /></button>
+        <a href="/admin" className="hidden h-10 items-center gap-2 rounded-md border border-[hsl(var(--border))] px-3 text-[10px] font-bold uppercase text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] sm:flex"><LayoutDashboard size={14} />{t.admin}</a><a href="/account" className="hidden h-10 items-center rounded-md border border-[hsl(var(--border))] px-3 text-[10px] font-bold uppercase text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] sm:flex">{t.account}</a>
+        <button onClick={() => setNotifOpen(true)} className="relative flex h-10 w-10 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]" aria-label="Notifications"><Bell size={17} />{unreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--primary))] px-1 text-[8px] font-bold text-white">{unreadCount > 9 ? "9+" : unreadCount}</span>}</button>
         {notifOpen && <NotificationCenter lang={lang} onClose={() => setNotifOpen(false)} />}
         <DarkModeToggle dark={dark} setDark={setDark} />
-        <button onClick={() => setLang(lang === "en" ? "ar" : lang === "ar" ? "ku" : "en")} className="flex h-10 items-center gap-2 border border-[hsl(var(--foreground)/.18)] px-3 text-[11px] font-bold"><Globe2 size={15} />{lang === "en" ? "عربي" : lang === "ar" ? "Ku" : "EN"}</button>
-        <button onClick={() => setMobileOpen(!mobileOpen)} className="flex h-10 w-10 items-center justify-center border border-[hsl(var(--foreground)/.18)] lg:hidden" aria-label="Menu"><Menu size={18} /></button>
+        <button onClick={() => setLang(lang === "en" ? "ar" : lang === "ar" ? "ku" : "en")} className="flex h-10 items-center gap-1.5 rounded-md border border-[hsl(var(--border))] px-3 text-[11px] font-bold text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"><Globe2 size={15} /><span>{lang === "en" ? "عربي" : lang === "ar" ? "Ku" : "EN"}</span></button>
+        <button onClick={() => setMobileOpen(!mobileOpen)} className="flex h-10 w-10 items-center justify-center rounded-md border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] lg:hidden" aria-label="Menu" aria-expanded={mobileOpen}>{mobileOpen ? <X size={18} /> : <Menu size={18} />}</button>
       </div>
     </div>
-    {mobileOpen && <div className="border-t border-[hsl(var(--foreground)/.10)] bg-[hsl(var(--background))] px-5 py-4 lg:hidden">
-      <div className="flex flex-col gap-3">
-        <button onClick={() => { onSearch(); setMobileOpen(false); }} className="flex items-center gap-2 py-2 text-left text-sm font-bold uppercase"><Search size={15} />{t.search}</button>
-        <a href="/live-scores" className="py-2 text-sm font-bold uppercase">{t.liveScores}</a>
-        <a href="/transfers" className="py-2 text-sm font-bold uppercase">{t.transfers}</a>
-        <a href="/players" className="py-2 text-sm font-bold uppercase">{t.players}</a>
-        <a href="/predictions" className="py-2 text-sm font-bold uppercase">{t.predictions}</a>
-        <a href="/teams" className="py-2 text-sm font-bold uppercase">{t.teams}</a>
-        <a href="/standings" className="py-2 text-sm font-bold uppercase">{t.standings}</a>
-        <a href="/admin" className="py-2 text-sm font-bold uppercase">{t.admin}</a>
-        <a href="/account" className="py-2 text-sm font-bold uppercase">{t.account}</a>
-      </div>
+    {mobileOpen && <div className="border-t border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-4 shadow-[var(--shadow-sm)] lg:hidden">
+      <nav className="flex flex-col gap-0.5">
+        <button onClick={() => { onSearch(); setMobileOpen(false); }} className="flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm font-bold uppercase transition-colors hover:bg-[hsl(var(--muted))]"><Search size={15} />{t.search}</button>
+        {[{ href: "/live-scores", label: t.liveScores }, { href: "/transfers", label: t.transfers }, { href: "/players", label: t.players }, { href: "/predictions", label: t.predictions }, { href: "/teams", label: t.teams }, { href: "/standings", label: t.standings }].map((link) =>
+          <a key={link.href} href={link.href} onClick={() => setMobileOpen(false)} className="rounded-md px-3 py-2.5 text-sm font-bold uppercase transition-colors hover:bg-[hsl(var(--muted))]">{link.label}</a>)}
+        <div className="mt-3 flex gap-2 border-t border-[hsl(var(--border))] pt-3"><a href="/admin" onClick={() => setMobileOpen(false)} className="flex-1 rounded-md border border-[hsl(var(--border))] px-3 py-2.5 text-center text-[11px] font-bold uppercase transition-colors hover:bg-[hsl(var(--muted))]">{t.admin}</a><a href="/account" onClick={() => setMobileOpen(false)} className="flex-1 rounded-md border border-[hsl(var(--border))] px-3 py-2.5 text-center text-[11px] font-bold uppercase transition-colors hover:bg-[hsl(var(--muted))]">{t.account}</a></div>
+      </nav>
     </div>}
   </header>;
+}
+
+function PageHeader({ kicker, title, right }: { kicker: string; title: React.ReactNode; right?: React.ReactNode }) {
+  return <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b-2 border-[hsl(var(--foreground))] pb-4">
+    <div>
+      <p className="section-kicker">{kicker}</p>
+      <h1 className="section-heading mt-2 text-3xl sm:text-4xl">{title}</h1>
+    </div>
+    {right && <div className="shrink-0">{right}</div>}
+  </div>;
+}
+
+function SectionHeading({ kicker, title, right }: { kicker: string; title: React.ReactNode; right?: React.ReactNode }) {
+  return <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b-2 border-[hsl(var(--foreground))] pb-4">
+    <div>
+      <p className="section-kicker">{kicker}</p>
+      <h2 className="section-heading mt-2 text-3xl sm:text-4xl">{title}</h2>
+    </div>
+    {right && <div className="shrink-0">{right}</div>}
+  </div>;
 }
 
 function PageNav({ page, totalPages, onChange, lang }: { page: number; totalPages: number; onChange: (page: number) => void; lang: Lang }) {
   if (totalPages < 2) return null;
   const t = copy[lang];
-  return <div className="mt-8 flex items-center justify-center gap-2">
-    <Button variant="outline" disabled={page === 1} onClick={() => onChange(page - 1)}>{t.previous}</Button>
-    <span className="px-3 font-mono-sport text-xs">{page} / {totalPages}</span>
-    <Button variant="outline" disabled={page === totalPages} onClick={() => onChange(page + 1)}>{t.next}</Button>
+  return <div className="mt-10 flex items-center justify-center gap-3">
+    <Button variant="outline" size="sm" disabled={page === 1} onClick={() => onChange(page - 1)} className="gap-1.5"><ChevronLeft size={14} />{t.previous}</Button>
+    <span className="px-3 font-mono-sport text-xs text-[hsl(var(--muted-foreground))]">{page} / {totalPages}</span>
+    <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => onChange(page + 1)} className="gap-1.5">{t.next}<ChevronRight size={14} /></Button>
   </div>;
 }
 
@@ -554,27 +544,28 @@ function NewsCard({ article, lang, large = false }: { article: NewsArticle; lang
   const fallbackSrc = label?.image || "/football-editorial.png";
   const slug = article.slug || slugify(article.title);
   const isSponsored = article.isSponsored || (article.contentType && article.contentType !== "editorial");
-  return <a href={`/article/${article.id}/${slug}`} className={`story-card group block overflow-hidden border border-[hsl(var(--foreground)/.12)] bg-[hsl(var(--card))] ${large ? "lg:col-span-2" : ""}`}>
+  return <a href={`/article/${article.id}/${slug}`} className={`story-card group block overflow-hidden rounded-xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] ${large ? "lg:col-span-2" : ""}`}>
     <div className={`relative overflow-hidden ${large ? "aspect-[16/8]" : "aspect-[16/10]"}`}>
       <img loading="lazy" decoding="async" src={article.image} alt={article.title} className="story-image h-full w-full object-cover" onError={(event) => { const img = event.currentTarget; if (img.src !== fallbackSrc) img.src = fallbackSrc; }} />
-      <span className="absolute left-3 top-3 bg-[hsl(var(--accent))] px-2 py-1 font-mono-sport text-[9px] font-bold uppercase">{label?.[lang] || article.category}</span>
-      {isSponsored && <span className="absolute right-3 top-3 bg-[hsl(var(--primary)/.9)] px-2 py-1 font-mono-sport text-[8px] font-bold uppercase text-white">{article.sponsorName ? `Sponsored by ${article.sponsorName}` : "Sponsored"}</span>}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/5" />
+      <span className="absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 font-mono-sport text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">{label?.[lang] || article.category}</span>
+      {isSponsored && <span className="absolute right-3 top-3 rounded-full bg-[hsl(var(--primary))] px-2.5 py-1 font-mono-sport text-[8px] font-bold uppercase text-white">{article.sponsorName ? `Sponsored by ${article.sponsorName}` : "Sponsored"}</span>}
     </div>
-    <div className="p-5">
-      <div className="mb-3 flex items-center gap-2 font-mono-sport text-[9px] uppercase text-[hsl(var(--muted-foreground))]"><span>{article.source}</span><span>•</span><span>{new Date(article.publicationDate).toLocaleDateString(lang === "ar" ? "ar" : "en-US")}</span>{article.readingTime && <><span>•</span><span>{article.readingTime} {copy[lang].readTime}</span></>}</div>
-      <h3 className={`font-display font-bold leading-[1.02] tracking-[-.045em] ${large ? "text-2xl sm:text-3xl lg:text-5xl" : "text-xl sm:text-2xl"}`}>{article.title}</h3>
-      <p className="mt-3 line-clamp-2 text-sm leading-6 text-[hsl(var(--muted-foreground))]">{article.description}</p>
-      {article.tags.length > 0 && <div className="mt-4 flex gap-1.5 overflow-x-auto scrollbar-none">{article.tags.slice(0, 4).map((tag) => <span key={tag} className="flex-shrink-0 border border-[hsl(var(--foreground)/.1)] px-2 py-0.5 font-mono-sport text-[8px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]">{tag}</span>)}</div>}
+    <div className={`${large ? "p-6" : "p-5"}`}>
+      <div className="mb-3 flex items-center gap-1.5 font-mono-sport text-[9px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]"><span className="truncate">{article.source}</span><span className="text-[hsl(var(--primary))]">•</span><span>{new Date(article.publicationDate).toLocaleDateString(lang === "ar" ? "ar" : "en-US")}</span>{article.readingTime && <><span className="text-[hsl(var(--primary))]">•</span><span>{article.readingTime} {copy[lang].readTime}</span></>}</div>
+      <h3 className={`font-display font-bold leading-[1.05] tracking-[-.03em] text-balance transition-colors group-hover:text-[hsl(var(--primary))] ${large ? "text-2xl sm:text-3xl lg:text-4xl" : "text-lg sm:text-xl"}`}>{article.title}</h3>
+      <p className={`mt-2.5 line-clamp-2 leading-6 text-[hsl(var(--muted-foreground))] ${large ? "text-base" : "text-sm"}`}>{article.description}</p>
+      {article.tags.length > 0 && <div className="mt-4 flex flex-wrap gap-1.5">{article.tags.slice(0, 4).map((tag) => <span key={tag} className="rounded-full border border-[hsl(var(--border))] px-2 py-0.5 font-mono-sport text-[8px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]">{tag}</span>)}</div>}
     </div>
   </a>;
 }
 
 function NewsCardSkeleton({ large = false }: { large?: boolean }) {
-  return <div className={`overflow-hidden border border-[hsl(var(--foreground)/.12)] bg-[hsl(var(--card))] ${large ? "lg:col-span-2" : ""}`}>
+  return <div className={`overflow-hidden rounded-xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] ${large ? "lg:col-span-2" : ""}`}>
     <div className={`skeleton ${large ? "aspect-[16/8]" : "aspect-[16/10]"}`} />
     <div className="p-5 space-y-3">
       <div className="skeleton h-3 w-32" />
-      <div className={`skeleton ${large ? "h-10 w-3/4" : "h-7 w-2/3"}`} />
+      <div className={`skeleton ${large ? "h-10 w-3/4" : "h-6 w-2/3"}`} />
       <div className="skeleton h-4 w-full" />
       <div className="skeleton h-4 w-2/3" />
     </div>
@@ -673,17 +664,15 @@ function Home() {
     <Header lang={lang} setLang={setLang} onSearch={() => setSearchOpen(true)} dark={dark} setDark={setDark} />
     <main id="main-content">
       <section className="mx-auto max-w-[1440px] px-5 pb-10 pt-10 lg:px-12 lg:pt-16">
-        <div className="mb-8 flex flex-col justify-between gap-5 border-b border-[hsl(var(--foreground)/.18)] pb-5 sm:flex-row sm:items-end">
-          <div><p className="mb-3 flex items-center gap-2 font-mono-sport text-[10px] uppercase tracking-[.16em] text-[hsl(var(--primary))]"><span className="h-2 w-2 rounded-full bg-[hsl(var(--primary))]" />{t.verification}</p><h1 className="max-w-5xl font-display text-[clamp(3rem,7vw,6.7rem)] font-bold leading-[.88] tracking-[-.08em]">{t.hero}</h1></div>
+        <div className="mb-10 flex flex-col justify-between gap-6 border-b border-[hsl(var(--foreground)/.15)] pb-8 sm:flex-row sm:items-end">
+          <div><p className="section-kicker">{t.verification}</p><h1 className="mt-4 max-w-5xl font-display text-[clamp(2.75rem,6.5vw,6rem)] font-bold leading-[.92] tracking-[-.06em] text-balance">{t.hero}</h1></div>
           <p className="max-w-xs text-sm leading-6 text-[hsl(var(--muted-foreground))]">{t.brandLine}</p>
         </div>
-        {lead ? <div className="grid gap-7 lg:grid-cols-[1.7fr_1fr]"><NewsCard article={lead} lang={lang} large /><aside className="flex flex-col justify-between border-t-4 border-[hsl(var(--primary))] bg-[hsl(var(--secondary))] p-7"><div><p className="font-mono-sport text-[10px] uppercase tracking-[.16em]">SPORTYRA / NEWSROOM</p><h2 className="mt-12 font-display text-4xl font-bold leading-none tracking-[-.06em]">{t.featured}</h2></div><p className="max-w-sm text-sm leading-6 text-[hsl(var(--secondary-foreground)/.75)]">{t.heroText}</p></aside></div>
-          : <div className="border border-dashed p-10 text-center"><CircleAlert className="mx-auto mb-4 text-[hsl(var(--primary))]" /><h2 className="font-display text-3xl font-bold">{t.noNews}</h2><p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{news.isLoading ? "Loading…" : news.isError ? errorMessage(news.error) : t.noNewsText}</p></div>}
+        {lead ? <div className="grid gap-7 lg:grid-cols-[1.7fr_1fr]"><NewsCard article={lead} lang={lang} large /><aside className="flex flex-col justify-between rounded-xl border border-[hsl(var(--primary)/.25)] border-t-4 border-t-[hsl(var(--primary))] bg-[hsl(var(--secondary))] p-7"><div><p className="font-mono-sport text-[10px] uppercase tracking-[.16em] text-[hsl(var(--primary))]">Sportyra / Newsroom</p><h2 className="mt-10 font-display text-4xl font-bold leading-none tracking-[-.05em]">{t.featured}</h2></div><p className="max-w-sm text-sm leading-6 text-[hsl(var(--secondary-foreground)/.75)]">{t.heroText}</p></aside></div>
+          : <div className="rounded-xl border border-dashed p-10 text-center"><CircleAlert className="mx-auto mb-4 text-[hsl(var(--primary))]" /><h2 className="font-display text-3xl font-bold">{t.noNews}</h2><p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">{news.isLoading ? "Loading…" : news.isError ? errorMessage(news.error) : t.noNewsText}</p></div>}
       </section>
-      <section id="latest" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12 lg:py-16">
-        <div className="mb-7 flex flex-wrap items-end justify-between gap-4 border-b-2 border-[hsl(var(--foreground))] pb-4"><div><p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">02 / Coverage</p><h2 className="font-display text-4xl font-bold tracking-[-.06em]">{t.latest}</h2></div>
-          <div className="flex max-w-full flex-wrap gap-2">{[{ id: "", en: t.all, ar: t.all, ku: t.all }, ...categories].map((item) => <button key={item.id} onClick={() => { setCategory(item.id); setPage(1); setTag(""); }} className={`whitespace-nowrap border px-3 py-2 text-[10px] font-bold uppercase ${category === item.id ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-white" : ""}`}>{item[lang]}</button>)}</div>
-        </div>
+      <section id="latest" className="mx-auto max-w-[1440px] px-5 py-12 lg:px-12 lg:py-16">
+        <SectionHeading kicker="02 / Coverage" title={t.latest} right={<div className="flex max-w-full flex-wrap gap-2">{[{ id: "", en: t.all, ar: t.all, ku: t.all }, ...categories].map((item) => <button key={item.id} onClick={() => { setCategory(item.id); setPage(1); setTag(""); }} className={`whitespace-nowrap rounded-full border px-3.5 py-2 text-[10px] font-bold uppercase transition-colors ${category === item.id ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-white" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary)/.5)] hover:text-[hsl(var(--foreground))]"}`}>{item[lang]}</button>)}</div>} />
         {availableTags.length > 0 && <TagFilter tags={availableTags} activeTag={tag} onSelect={(item) => { setTag(item); setPage(1); }} allLabel={t.all} />}
         {rest.length ? <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{rest.map((article) => <NewsCard key={article.id} article={article} lang={lang} />)}</div> : news.isLoading ? <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <NewsCardSkeleton key={i} />)}</div> : !lead && <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noNews}</div>}
         <PageNav page={news.data?.page ?? page} totalPages={news.data?.totalPages ?? 0} onChange={setPage} lang={lang} />
@@ -691,8 +680,8 @@ function Home() {
       <TrendingSection lang={lang} />
       <FixturesSection lang={lang} />
       <AdSlot slot={import.meta.env.VITE_ADSENSE_HOME_SLOT || ""} location="home" />
-      <section id="other-sports" className="bg-[hsl(var(--foreground))] py-10 text-[hsl(var(--background))]"><div className="mx-auto max-w-[1440px] px-5 lg:px-12"><div className="flex items-center justify-between gap-4"><h2 className="font-display text-3xl font-bold">{t.other}</h2><span className="font-mono-sport text-[9px] uppercase opacity-60">Live editorial feed</span></div></div></section>
-      <section className="mx-auto max-w-[1440px] px-5 py-14 lg:px-12"><div className="relative overflow-hidden bg-[hsl(var(--primary))] p-8 text-white lg:p-14"><div className="relative max-w-2xl"><p className="mb-4 font-mono-sport text-[10px] uppercase">{t.briefing}</p><h2 className="font-display text-4xl font-bold leading-none sm:text-6xl">{t.briefingText}</h2><Newsletter lang={lang} /></div></div></section>
+      <section id="other-sports" className="bg-[hsl(var(--foreground))] py-14 text-[hsl(var(--background))]"><div className="mx-auto max-w-[1440px] px-5 lg:px-12"><div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="section-kicker">03 / Beyond football</p><h2 className="mt-2 font-display text-3xl font-bold tracking-[-.04em]">{t.other}</h2></div><span className="font-mono-sport text-[9px] uppercase tracking-wide opacity-60">Live editorial feed</span></div></div></section>
+      <section className="mx-auto max-w-[1440px] px-5 py-16 lg:px-12"><div className="relative overflow-hidden rounded-2xl bg-[hsl(var(--primary))] p-8 text-white shadow-[var(--shadow-md)] lg:p-14"><div className="relative max-w-2xl"><p className="mb-4 font-mono-sport text-[10px] uppercase tracking-[.18em] opacity-90">{t.briefing}</p><h2 className="font-display text-3xl font-bold leading-tight sm:text-5xl">{t.briefingText}</h2><Newsletter lang={lang} /></div></div></section>
     </main>
     <Footer lang={lang} />{searchOpen && <SearchPanel lang={lang} value={query} setValue={setQuery} onClose={() => setSearchOpen(false)} />}
   </div>;
@@ -911,13 +900,13 @@ function Article({ id }: { id: number }) {
   const articleImageFallback = "/football-editorial.png";
   const headings = data.body ? Array.from(new DOMParser().parseFromString(data.body, "text/html").querySelectorAll("h2, h3")).map((el) => ({ text: el.textContent || "", level: el.tagName.toLowerCase(), id: (el.textContent || "").toLowerCase().replace(/[^a-z0-9]+/g, "-") })) : [];
   const isSponsoredArticle = data.isSponsored || (data.contentType && data.contentType !== "editorial");
-  return <div className="min-h-screen" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}><Header lang={lang} setLang={setLang} onSearch={() => { }} dark={dark} setDark={setDark} /><main id="main-content" className="mx-auto max-w-[1000px] px-5 py-12 lg:py-20"><AdSlot slot={import.meta.env.VITE_ADSENSE_ARTICLE_SLOT || ""} location="article_top" /><a href="/" className="font-mono-sport text-xs uppercase text-[hsl(var(--primary))]">← Sportyra</a>{isSponsoredArticle && <div className="mt-6 border-l-4 border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.05)] p-3"><p className="font-mono-sport text-[10px] uppercase text-[hsl(var(--primary))]">{data.sponsorName ? `Sponsored by ${data.sponsorName}` : "Sponsored Content"}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">This content was produced in partnership with {data.sponsorName || "a sponsor"} and may differ from Sportyra editorial content.</p></div>}<p className="mt-10 font-mono-sport text-[10px] uppercase text-[hsl(var(--muted-foreground))]">{data.source} • {new Date(data.publicationDate).toLocaleString(lang === "ar" ? "ar" : lang === "ku" ? "ku" : "en-US")}{data.readingTime && <> • {data.readingTime} {t.readTime}</>}</p><h1 className="mt-4 font-display text-[clamp(2rem,5vw,5.5rem)] font-bold leading-[.94] tracking-[-.06em]">{data.title}</h1><p className="mt-6 text-lg leading-8 text-[hsl(var(--muted-foreground))]">{data.description}</p>
+  return <div className="min-h-screen" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}><Header lang={lang} setLang={setLang} onSearch={() => { }} dark={dark} setDark={setDark} /><main id="main-content" className="mx-auto max-w-[1000px] px-5 py-12 lg:py-20"><AdSlot slot={import.meta.env.VITE_ADSENSE_ARTICLE_SLOT || ""} location="article_top" /><a href="/" className="inline-flex items-center gap-1 rounded-md border border-[hsl(var(--border))] px-3 py-1.5 font-mono-sport text-[10px] font-bold uppercase text-[hsl(var(--muted-foreground))] transition-colors hover:border-[hsl(var(--primary)/.5)] hover:text-[hsl(var(--primary))]"><ChevronLeft size={13} /> Sportyra</a>{isSponsoredArticle && <div className="mt-6 rounded-lg border-l-4 border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.06)] p-4"><p className="font-mono-sport text-[10px] uppercase text-[hsl(var(--primary))]">{data.sponsorName ? `Sponsored by ${data.sponsorName}` : "Sponsored Content"}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">This content was produced in partnership with {data.sponsorName || "a sponsor"} and may differ from Sportyra editorial content.</p></div>}<div className="mt-10 flex flex-wrap items-center gap-2 font-mono-sport text-[10px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]"><span className="rounded-full bg-[hsl(var(--muted))] px-2.5 py-1 font-bold text-[hsl(var(--foreground))]">{categories.find((c) => c.id === data.category)?.[lang] || data.category}</span><span>{data.source}</span><span>•</span><span>{new Date(data.publicationDate).toLocaleString(lang === "ar" ? "ar" : lang === "ku" ? "ku" : "en-US")}</span>{data.readingTime && <><span>•</span><span>{data.readingTime} {t.readTime}</span></>}</div><h1 className="mt-5 font-display text-[clamp(2rem,5vw,5rem)] font-bold leading-[.95] tracking-[-.04em] text-balance">{data.title}</h1><p className="mt-6 text-lg leading-8 text-[hsl(var(--muted-foreground))]">{data.description}</p>
     <div className="mt-4 flex flex-wrap items-center gap-3 border-b pb-5"><span className="font-mono-sport text-xs">{data.author} · {data.source}</span><ShareControls article={data} label={t.share} /><button onClick={() => bookmarkMutation.mutate()} className={`flex items-center gap-1 border p-2 text-xs ${bookmarkCheck.data?.bookmarked ? "bg-[hsl(var(--primary))] text-white" : ""}`}>{bookmarkCheck.data?.bookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}{bookmarkCheck.data?.bookmarked ? t.articleSaved : t.saveArticle}</button><button onClick={() => setShowReport(!showReport)} className="flex items-center gap-1 border p-2 text-xs"><Flag size={14} />{t.reportArticle}</button></div>
     {showReport && <div className="my-4 border bg-[hsl(var(--secondary))] p-4"><label className="block text-xs font-bold">{t.reportReason}<Input className="mt-1 h-11" value={reportReason} maxLength={500} onChange={(e) => setReportReason(e.target.value)} placeholder={t.reportReason} /></label><Button className="mt-3" onClick={() => reportMutation.mutate()} disabled={!reportReason.trim()}>{t.submitReport}</Button></div>}
     {headings.length > 1 && <div className="my-6 border-l-2 border-[hsl(var(--primary)/.3)] bg-[hsl(var(--secondary))] p-4"><p className="mb-2 font-mono-sport text-[10px] uppercase text-[hsl(var(--primary))]">{t.tableOfContents}</p><nav className="space-y-1">{headings.map((h, i) => <a key={i} href={`#${h.id}`} className={`block text-sm hover:text-[hsl(var(--primary))] ${h.level === "h3" ? "pl-4" : ""}`}>{h.text}</a>)}</nav></div>}
-    <img decoding="async" fetchPriority="high" src={data.image} alt={data.title} className="mt-6 aspect-video w-full object-cover" onError={(event) => { const img = event.currentTarget; if (img.src !== articleImageFallback) img.src = articleImageFallback; }} />
+    <img decoding="async" fetchPriority="high" src={data.image} alt={data.title} className="mt-8 aspect-video w-full rounded-xl border border-[hsl(var(--card-border))] object-cover" onError={(event) => { const img = event.currentTarget; if (img.src !== articleImageFallback) img.src = articleImageFallback; }} />
     {data.body && <div className="prose prose-lg mt-10 max-w-none leading-relaxed" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data.body, DOMPURIFY_CONFIG) }} />}
-    {data.tags.length > 0 && <div className="mt-5 flex flex-wrap gap-2">{data.tags.map((tag) => <span key={tag} className="rounded-full border px-3 py-1 text-xs">#{tag}</span>)}</div>}
+    {data.tags.length > 0 && <div className="mt-6 flex flex-wrap gap-2">{data.tags.map((tag) => <span key={tag} className="rounded-full border border-[hsl(var(--border))] px-3 py-1 text-xs text-[hsl(var(--muted-foreground))]">#{tag}</span>)}</div>}
     <div className="mt-8 flex flex-wrap items-center justify-between gap-5 border-t border-b py-5"><span className="font-mono-sport text-xs">{data.author} · {data.source}</span><ShareControls article={data} label={t.share} /></div>
     {navigation.data && (navigation.data.previous || navigation.data.next) && <div className="mt-10 grid gap-4 sm:grid-cols-2">{navigation.data.previous && <a href={`/article/${navigation.data.previous.id}/${navigation.data.previous.slug || slugify(navigation.data.previous.title)}`} className="group border p-4 transition hover:border-[hsl(var(--primary))]"><p className="font-mono-sport text-[9px] uppercase text-[hsl(var(--muted-foreground))]"><ChevronLeft size={12} className="inline" /> {t.prevArticle}</p><p className="mt-2 font-display text-sm font-bold leading-tight group-hover:text-[hsl(var(--primary))]">{navigation.data.previous.title}</p></a>}{navigation.data.next && <a href={`/article/${navigation.data.next.id}/${navigation.data.next.slug || slugify(navigation.data.next.title)}`} className="group border p-4 text-right transition hover:border-[hsl(var(--primary))]"><p className="font-mono-sport text-[9px] uppercase text-[hsl(var(--muted-foreground))]">{t.nextArticle} <ChevronRight size={12} className="inline" /></p><p className="mt-2 font-display text-sm font-bold leading-tight group-hover:text-[hsl(var(--primary))]">{navigation.data.next.title}</p></a>}</div>}
     <section className="mt-12"><h2 className="mb-5 font-display text-3xl font-bold">{t.comments} ({commentsQuery.data?.items?.length || 0})</h2><div className="mb-6 border bg-[hsl(var(--secondary))] p-4"><h3 className="mb-3 font-display text-lg font-bold">{t.leaveComment}</h3><div className="grid gap-3 sm:grid-cols-2"><Input className="h-11" placeholder={t.commentName} value={commentName} onChange={(e) => setCommentName(e.target.value)} /><Input className="h-11" placeholder={t.commentEmail} type="email" value={commentEmail} onChange={(e) => setCommentEmail(e.target.value)} /></div><Textarea className="mt-3 min-h-24" placeholder={t.commentBody} value={commentBody} maxLength={2000} onChange={(e) => setCommentBody(e.target.value)} /><Button className="mt-3" onClick={() => commentMutation.mutate()} disabled={!commentBody.trim() || !commentName.trim() || !commentEmail.trim() || commentMutation.isPending}>{commentMutation.isPending ? "…" : t.postComment}</Button></div><div className="space-y-4">{commentsQuery.data?.items && commentsQuery.data.items.length > 0 ? commentsQuery.data.items.filter((c) => !c.parentId).map((comment) => <div key={comment.id} className="border-b pb-4"><div className="flex items-center gap-2"><span className="font-display text-sm font-bold">{comment.authorName}</span><span className="font-mono-sport text-[9px] text-[hsl(var(--muted-foreground))]">{new Date(comment.createdAt).toLocaleDateString()}</span></div><p className="mt-2 text-sm leading-6">{comment.body}</p><button onClick={() => { commentsApi.report(comment.id, "inappropriate"); toast.success(t.reportSubmitted); }} className="mt-1 flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--primary))]"><Flag size={10} />{t.reportComment}</button></div>) : <p className="py-4 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noComments}</p>}</div></section>
@@ -1877,12 +1866,9 @@ function LiveMatchPage({ matchId }: { matchId?: number }) {
   return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}>
     <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
     <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-      <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-        <p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Live Scores</p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">{t.matchCenter}</h1>
-      </div>
+      <PageHeader kicker="Live Scores" title={t.matchCenter} />
       <div className="mb-6 flex flex-wrap gap-2">
-        {[{ id: "all", label: t.allMatches }, { id: "live", label: t.liveNow }, { id: "scheduled", label: t.upcoming }, { id: "finished", label: t.finished }].map((f) => <button key={f.id} onClick={() => setFilter(f.id)} className={`whitespace-nowrap border px-4 py-2 text-[11px] font-bold uppercase ${filter === f.id ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-white" : ""}`}>{f.label}</button>)}
+        {[{ id: "all", label: t.allMatches }, { id: "live", label: t.liveNow }, { id: "scheduled", label: t.upcoming }, { id: "finished", label: t.finished }].map((f) => <button key={f.id} onClick={() => setFilter(f.id)} className={`whitespace-nowrap rounded-full border px-4 py-2 text-[11px] font-bold uppercase transition-colors ${filter === f.id ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-white" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary)/.5)] hover:text-[hsl(var(--foreground))]"}`}>{f.label}</button>)}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{matches.isLoading ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-40" />) : items.length === 0 ? <div className="col-span-full py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noMatches}</div> : items.map((m) => <a key={m.id} href={`/matches/${m.id}`} onClick={(e) => { e.preventDefault(); setLocation(`/matches/${m.id}`); }} className="border bg-[hsl(var(--card))] p-4 text-left transition hover:shadow-md">
         <div className="mb-2 flex items-center justify-between"><span className="font-mono-sport text-[9px] uppercase text-[hsl(var(--muted-foreground))]">{m.competitionName}</span>{m.status === "live" ? <span className="flex items-center gap-1 text-[9px] font-bold uppercase text-red-600"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" /> LIVE {m.minute ? `${m.minute}'` : ""}</span> : <span className="font-mono-sport text-[9px] uppercase text-[hsl(var(--muted-foreground))]">{m.status === "finished" ? "FT" : new Date(m.matchDate).toLocaleDateString()}</span>}</div>
@@ -1906,12 +1892,9 @@ function TransferCenterPage() {
   return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}>
     <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
     <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-      <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-        <p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Transfers</p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">{t.transferCenter}</h1>
-      </div>
+      <PageHeader kicker="Transfers" title={t.transferCenter} />
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex flex-wrap gap-2">{[{ id: "", label: t.all }, { id: "confirmed", label: t.confirmed }, { id: "completed", label: t.completed }, { id: "negotiating", label: t.negotiating }, { id: "rumour", label: t.rumour }].map((s) => <button key={s.id} onClick={() => setStatusFilter(s.id)} className={`whitespace-nowrap border px-3 py-1.5 text-[10px] font-bold uppercase ${statusFilter === s.id ? "border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]" : ""}`}>{s.label}</button>)}</div>
+        <div className="flex flex-wrap gap-2">{[{ id: "", label: t.all }, { id: "confirmed", label: t.confirmed }, { id: "completed", label: t.completed }, { id: "negotiating", label: t.negotiating }, { id: "rumour", label: t.rumour }].map((s) => <button key={s.id} onClick={() => setStatusFilter(s.id)} className={`whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase transition-colors ${statusFilter === s.id ? "border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground)/.4)] hover:text-[hsl(var(--foreground))]"}`}>{s.label}</button>)}</div>
         <Input placeholder="Search transfers…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="h-9 w-full sm:w-64" />
       </div>
       {transfers.isLoading ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-36" />)}</div> : items.length === 0 ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noTransfers}</div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{items.map((tr) => <div key={tr.id} className="border bg-[hsl(var(--card))] p-5 transition hover:shadow-md">
@@ -1997,11 +1980,7 @@ function PlayerProfilesPage({ slug }: { slug?: string }) {
   return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}>
     <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
     <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-      <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-        <p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Players</p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">{t.playerProfiles}</h1>
-        {total > 0 && <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{total} players</p>}
-      </div>
+      <PageHeader kicker="Players" title={t.playerProfiles} right={total > 0 ? <p className="text-xs text-[hsl(var(--muted-foreground))]">{total} players</p> : undefined} />
       <Input placeholder={`${t.searchPlayers}...`} value={search} onChange={(e) => setSearch(e.target.value)} className="mb-6 h-10 w-full max-w-md" />
       {players.isLoading ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-48" />)}</div> : items.length === 0 ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noPlayers}</div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{items.map((pl) => <a key={pl.id} href={`/players/${pl.slug}`} onClick={(e) => { e.preventDefault(); setLocation(`/players/${pl.slug}`); }} className="border bg-[hsl(var(--card))] p-4 text-left transition hover:shadow-md">
         <PlayerPhoto src={pl.photoUrl} name={pl.name} className="mb-3 h-20 w-20 rounded-full" />
@@ -2031,11 +2010,8 @@ function PredictionsPage() {
   return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}>
     <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
     <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-      <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-        <p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Fan Zone</p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">{t.predictions}</h1>
-      </div>
-      <div className="mb-6 flex flex-wrap gap-2">{([["matches", t.allMatches], ["leaderboard", t.leaderboard], ["myPredictions", t.yourPredictions]] as const).map(([id, label]) => <button key={id} onClick={() => setTab(id)} className={`whitespace-nowrap border px-4 py-2 text-[11px] font-bold uppercase ${tab === id ? "border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]" : ""}`}>{label}</button>)}</div>
+      <PageHeader kicker="Fan Zone" title={t.predictions} />
+      <div className="mb-6 flex flex-wrap gap-2">{([["matches", t.allMatches], ["leaderboard", t.leaderboard], ["myPredictions", t.yourPredictions]] as const).map(([id, label]) => <button key={id} onClick={() => setTab(id)} className={`whitespace-nowrap rounded-full border px-4 py-2 text-[11px] font-bold uppercase transition-colors ${tab === id ? "border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]" : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground)/.4)] hover:text-[hsl(var(--foreground))]"}`}>{label}</button>)}</div>
       {tab === "leaderboard" && <div className="border bg-[hsl(var(--card))]"><div className="grid grid-cols-[50px_1fr_80px_80px] gap-4 border-b p-4 font-mono-sport text-[10px] uppercase text-[hsl(var(--muted-foreground))]"><span>#</span><span>User</span><span>{t.points}</span><span>{t.correct}</span></div>{leaderboardItems.length === 0 ? <div className="p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noPredictions}</div> : leaderboardItems.map((entry) => <div key={entry.id} className={`grid grid-cols-[50px_1fr_80px_80px] gap-4 border-b p-4 text-sm ${entry.position <= 3 ? "bg-[hsl(var(--primary)/.05)]" : ""}`}><span className="font-display text-lg font-bold">{entry.position}</span><span className="font-bold">{entry.username}</span><span>{entry.totalPoints}</span><span>{entry.correctPredictions}/{entry.totalPredictions}</span></div>)}</div>}
       {tab === "matches" && <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{matches.isLoading ? Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-40" />) : (matches.data?.items ?? []).length === 0 ? <div className="col-span-full py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noMatches}</div> : (matches.data?.items ?? []).map((m) => <div key={m.id} className="border bg-[hsl(var(--card))] p-5">
         <div className="mb-2 font-mono-sport text-[9px] uppercase text-[hsl(var(--muted-foreground))]">{m.competitionName} · {new Date(m.matchDate).toLocaleDateString()}</div>
@@ -2067,11 +2043,8 @@ function SmartTrendingPage() {
   return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}>
     <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
     <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-      <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-        <p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">🔥 {t.smartTrending}</p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">{t.trendingScore}</h1>
-      </div>
-      {trending.isLoading ? <div className="space-y-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-24" />)}</div> : articles.length === 0 ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noNews}</div> : <div className="space-y-4">{articles.map((article, idx) => <a key={article.id} href={`/article/${article.id}/${article.slug ?? ""}`} className="flex items-start gap-4 border bg-[hsl(var(--card))] p-4 transition hover:shadow-md">
+      <PageHeader kicker={`🔥 ${t.smartTrending}`} title={t.trendingScore} />
+      {trending.isLoading ? <div className="space-y-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-24" />)}</div> : articles.length === 0 ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noNews}</div> : <div className="space-y-4">{articles.map((article, idx) => <a key={article.id} href={`/article/${article.id}/${article.slug ?? ""}`} className="flex items-start gap-4 rounded-xl border bg-[hsl(var(--card))] p-4 transition hover:shadow-md">
         <div className="flex-shrink-0 font-display text-3xl font-bold text-[hsl(var(--primary)/.3)]">{idx + 1}</div>
         <div className="flex-1"><h3 className="font-display text-lg font-bold leading-tight">{article.title}</h3><p className="mt-1 line-clamp-2 text-sm text-[hsl(var(--muted-foreground))]">{article.description}</p><div className="mt-2 flex items-center gap-3 text-[9px] font-mono-sport uppercase text-[hsl(var(--muted-foreground))]"><span>{article.category}</span><span>·</span><span>{article.author}</span><span>·</span><span>{new Date(article.publicationDate).toLocaleDateString()}</span></div></div>
         <img loading="lazy" src={article.image} alt="" className="hidden h-20 w-28 flex-shrink-0 object-cover sm:block" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/football-editorial.png"; }} />
@@ -2094,11 +2067,7 @@ function StandingsPage() {
   return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}>
     <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
     <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-      <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-        <p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]"><Trophy size={12} className="inline" /> STANDINGS</p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">{t.standings}</h1>
-      </div>
-
+      <PageHeader kicker="Standings" title={t.standings} />
       {!selectedLeague && <>
         <p className="mb-6 text-sm text-[hsl(var(--muted-foreground))]">{t.selectLeague}</p>
         {leagues.isLoading ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="skeleton h-24" />)}</div>
@@ -2177,10 +2146,7 @@ function TeamsListPage() {
   return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" || lang === "ku" ? "rtl" : "ltr"}>
     <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
     <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-      <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-        <p className="font-mono-sport text-[10px] uppercase tracking-[.18em] text-[hsl(var(--primary))]">Clubs</p>
-        <h1 className="font-display text-4xl font-bold tracking-[-.06em]">{t.allTeams}</h1>
-      </div>
+      <PageHeader kicker="Clubs" title={t.allTeams} />
       <Input placeholder={`${t.searchTeams}...`} value={search} onChange={(e) => setSearch(e.target.value)} className="mb-6 h-10 w-full max-w-md" />
       {teams.isLoading ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-44" />)}</div> : items.length === 0 ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noTeams}</div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{items.map((team) => <a key={team.id} href={`/teams/${team.slug}`} className="group border bg-[hsl(var(--card))] p-5 transition hover:shadow-md">
         <TeamLogo src={team.badge} name={team.shortName || team.name} className="mb-3 h-14 w-14 rounded-full" fallbackTextClassName="text-sm" />
@@ -2308,7 +2274,47 @@ function TeamProfilePage({ slug }: { slug: string }) {
 
 function Footer({ lang }: { lang: Lang }) {
   const t = copy[lang];
-  return <footer className="border-t bg-[hsl(var(--secondary))]"><div className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12"><div className="flex flex-col justify-between gap-6 sm:flex-row"><Logo /><div className="text-sm text-[hsl(var(--muted-foreground))]">{t.brandLine}</div></div><div className="mt-8 flex flex-wrap gap-4 text-xs"><a href="/admin">Newsroom</a><a href="#latest">{t.latest}</a><a href="/rss.xml">RSS</a><a href="/sitemap.xml">Sitemap</a><a href="/partners">Partners</a></div></div></footer>;
+  const year = new Date().getFullYear();
+  return <footer className="border-t border-[hsl(var(--border))] bg-[hsl(var(--secondary))]">
+    <div className="mx-auto max-w-[1440px] px-5 py-14 lg:px-12">
+      <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div>
+          <Logo />
+          <p className="mt-4 max-w-xs text-sm leading-6 text-[hsl(var(--muted-foreground))]">{t.brandLine}</p>
+          <p className="mt-3 font-mono-sport text-[10px] uppercase tracking-wide text-[hsl(var(--muted-foreground))]">{t.briefing}</p>
+        </div>
+        <div>
+          <h3 className="section-kicker mb-4">{t.latest}</h3>
+          <nav className="flex flex-col gap-2 text-sm">
+            {categories.map((c) => <a key={c.id} href={`/category/${c.id}`} className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">{c[lang]}</a>)}
+          </nav>
+        </div>
+        <div>
+          <h3 className="section-kicker mb-4">{t.liveScores}</h3>
+          <nav className="flex flex-col gap-2 text-sm">
+            <a href="/live-scores" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">{t.liveScores}</a>
+            <a href="/transfers" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">{t.transfers}</a>
+            <a href="/players" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">{t.players}</a>
+            <a href="/teams" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">{t.teams}</a>
+            <a href="/standings" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">{t.standings}</a>
+          </nav>
+        </div>
+        <div>
+          <h3 className="section-kicker mb-4">{t.account}</h3>
+          <nav className="flex flex-col gap-2 text-sm">
+            <a href="/admin" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">{t.admin}</a>
+            <a href="/rss.xml" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">RSS</a>
+            <a href="/sitemap.xml" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">Sitemap</a>
+            <a href="/partners" className="w-fit text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]">Partners</a>
+          </nav>
+        </div>
+      </div>
+      <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-[hsl(var(--border))] pt-6 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row">
+        <span>© {year} Sportyra News</span>
+        <span className="font-mono-sport text-[10px] uppercase tracking-wide">Independent sports journalism</span>
+      </div>
+    </div>
+  </footer>;
 }
 
 function RoutedErrorBoundary({ children }: { children: React.ReactNode }) {
@@ -2331,13 +2337,106 @@ function ReferralRedirect({ params }: { params: { code: string } }) {
   const isSafeTarget = rawTarget.startsWith("/") && !rawTarget.startsWith("//");
   const target = isSafeTarget ? rawTarget : "/";
   useEffect(() => {
-    fetch(`/api/ref/${encodeURIComponent(code)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    }).then(() => { window.location.replace(target); }).catch(() => { window.location.replace(target); });
+    // Record the click through the API client (sets the required CSRF header) so the
+    // partner is credited, then redirect regardless of the outcome.
+    partnerApi.recordClick(code).catch(() => {});
+    window.location.replace(target);
   }, [code, target]);
   return <div className="flex min-h-screen items-center justify-center bg-[hsl(var(--background))]"><p className="font-mono-sport text-sm text-[hsl(var(--muted-foreground))]">Redirecting…</p></div>;
+}
+
+function CategoryPage({ category }: { category: string }) {
+  const [lang, setLang] = useState<Lang>("en");
+  const [dark, setDark] = useDarkMode();
+  const [page, setPage] = useState(1);
+  const t = copy[lang];
+  const isKnown = categories.some((c) => c.id === category);
+  const feed = useQuery({ queryKey: ["category", category, lang, page], queryFn: () => feedApi.get({ language: lang, category, page, pageSize: 12 }), enabled: isKnown });
+  useSeo({ title: `${categories.find((c) => c.id === category)?.[lang] || category} — Sportyra News`, description: t.brandLine, canonical: `${window.location.origin}/category/${category}` });
+  if (!isKnown) return <NotFound />;
+  const label = categories.find((c) => c.id === category);
+  const items = feed.data?.items ?? [];
+  return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
+    <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
+      <PageHeader kicker="Category" title={label?.[lang] || category} right={feed.data?.total != null ? <span className="font-mono-sport text-xs text-[hsl(var(--muted-foreground))]">{feed.data.total} articles</span> : undefined} />
+      {feed.isLoading ? <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <NewsCardSkeleton key={i} />)}</div> : items.length === 0 ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noNews}</div> : <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{items.map((a) => <NewsCard key={a.id} article={a} lang={lang} />)}</div>}
+      <PageNav page={feed.data?.page ?? page} totalPages={feed.data?.totalPages ?? 0} onChange={setPage} lang={lang} />
+    </main>
+    <Footer lang={lang} />
+  </div>;
+}
+
+function TagPage({ tag }: { tag: string }) {
+  const [lang, setLang] = useState<Lang>("en");
+  const [dark, setDark] = useDarkMode();
+  const [page, setPage] = useState(1);
+  const t = copy[lang];
+  const feed = useQuery({ queryKey: ["tag", tag, lang, page], queryFn: () => feedApi.get({ language: lang, tag, page, pageSize: 12 }) });
+  useSeo({ title: `#${tag} — Sportyra News`, description: t.brandLine, canonical: `${window.location.origin}/tag/${encodeURIComponent(tag)}` });
+  const items = feed.data?.items ?? [];
+  if (!tag) return <NotFound />;
+  return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
+    <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
+      <PageHeader kicker="Tag" title={`#${tag}`} right={feed.data?.total != null ? <span className="font-mono-sport text-xs text-[hsl(var(--muted-foreground))]">{feed.data.total} articles</span> : undefined} />
+      {feed.isLoading ? <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <NewsCardSkeleton key={i} />)}</div> : items.length === 0 ? <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noNews}</div> : <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{items.map((a) => <NewsCard key={a.id} article={a} lang={lang} />)}</div>}
+      <PageNav page={feed.data?.page ?? page} totalPages={feed.data?.totalPages ?? 0} onChange={setPage} lang={lang} />
+    </main>
+    <Footer lang={lang} />
+  </div>;
+}
+
+function CompetitionPage({ slug }: { slug: string }) {
+  const [lang, setLang] = useState<Lang>("en");
+  const [dark, setDark] = useDarkMode();
+  const t = copy[lang];
+  const comp = useQuery({
+    queryKey: ["competition", slug],
+    queryFn: async () => {
+      const list = await fixturesApi.competitions();
+      return list.items.find((c) => c.slug === slug) ?? null;
+    },
+  });
+  const c = comp.data;
+  const standings = useQuery({ queryKey: ["competition-standings", c?.name], queryFn: () => standingsApi.get(c!.name), enabled: !!c });
+  useSeo({ title: c ? `${c.name} — Sportyra News` : "Competition — Sportyra News", description: c ? `${c.name}${c.country ? ` · ${c.country}` : ""}` : "", canonical: `${window.location.origin}/competition/${slug}` });
+  if (comp.isLoading) return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}><Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} /><main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12"><div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton h-20" />)}</div></main></div>;
+  if (!c) return <NotFound />;
+  return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
+    <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
+      <PageHeader kicker="Competition" title={c.name} right={c.country ? <span className="font-mono-sport text-xs text-[hsl(var(--muted-foreground))]">{c.country}</span> : undefined} />
+      {standings.isLoading ? <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-12" />)}</div> : standings.data?.items?.length ? <div className="border bg-[hsl(var(--card))]">
+        <div className="grid grid-cols-[40px_1fr_60px_60px] gap-4 border-b p-3 font-mono-sport text-[10px] uppercase text-[hsl(var(--muted-foreground))]"><span>#</span><span>Team</span><span>{t.mp}</span><span>{t.pts}</span></div>
+        {standings.data.items.map((row, i) => <div key={i} className="grid grid-cols-[40px_1fr_60px_60px] gap-4 border-b p-3 text-sm"><span className="font-bold">{row.position ?? i + 1}</span><span className="font-bold">{row.name}</span><span>{row.played ?? "—"}</span><span className="font-bold">{row.points ?? "—"}</span></div>)}
+      </div> : <div className="py-12 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noStandings}</div>}
+      <a href="/standings" className="mt-6 inline-block text-sm font-bold underline text-[hsl(var(--primary))]">View all standings →</a>
+    </main>
+    <Footer lang={lang} />
+  </div>;
+}
+
+function FixturesPage() {
+  const [lang, setLang] = useState<Lang>("en");
+  const [dark, setDark] = useDarkMode();
+  const t = copy[lang];
+  const upcoming = useQuery({ queryKey: ["fixtures-upcoming"], queryFn: () => fixturesApi.upcoming() });
+  const recent = useQuery({ queryKey: ["fixtures-recent"], queryFn: () => fixturesApi.recent() });
+  useSeo({ title: `${t.fixtures} — Sportyra News`, description: t.liveScores, canonical: `${window.location.origin}/fixtures` });
+  const formatDate = (d: string) => new Date(d).toLocaleDateString(lang === "ar" ? "ar" : lang === "ku" ? "ku" : "en-US", { weekday: "short", month: "short", day: "numeric" });
+  const row = (f: any) => <div key={f.id} className="flex items-center justify-between border-b py-3"><div className="text-center min-w-[80px]"><p className="font-mono-sport text-[9px] uppercase text-[hsl(var(--muted-foreground))]">{formatDate(f.matchDate)}</p></div><div className="flex items-center gap-3 flex-1 px-4"><div className="flex flex-1 items-center justify-end gap-2 text-right"><TeamLogo src={f.homeTeam?.logoUrl} name={f.homeTeam?.name} className="h-8 w-8 rounded-full" /><p className="font-display text-sm font-bold">{f.homeTeam?.shortName || f.homeTeam?.name || "TBD"}</p></div><span className="font-mono-sport text-xs font-bold text-[hsl(var(--muted-foreground))]">{f.homeScore !== null && f.awayScore !== null ? `${f.homeScore} - ${f.awayScore}` : t.vs}</span><div className="flex flex-1 items-center gap-2"><TeamLogo src={f.awayTeam?.logoUrl} name={f.awayTeam?.name} className="h-8 w-8 rounded-full" /><p className="font-display text-sm font-bold">{f.awayTeam?.shortName || f.awayTeam?.name || "TBD"}</p></div></div>{f.competition && <span className="font-mono-sport text-[8px] uppercase text-[hsl(var(--muted-foreground))]">{f.competition.name}</span>}</div>;
+  return <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}>
+    <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
+    <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
+      <PageHeader kicker="Schedule" title={t.fixtures} />
+      <div className="grid gap-8 lg:grid-cols-2">
+        <div><div className="mb-5 border-b-2 border-[hsl(var(--foreground))] pb-3"><p className="section-kicker"><Calendar size={12} className="inline" /> {t.upcoming}</p></div>{upcoming.data?.items?.length ? <div>{upcoming.data.items.map(row)}</div> : <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noFixtures}</p>}</div>
+        <div><div className="mb-5 border-b-2 border-[hsl(var(--foreground))] pb-3"><p className="section-kicker"><Trophy size={12} className="inline" /> {t.recentResults}</p></div>{recent.data?.items?.length ? <div>{recent.data.items.map(row)}</div> : <p className="py-6 text-center text-sm text-[hsl(var(--muted-foreground))]">{t.noFixtures}</p>}</div>
+      </div>
+    </main>
+    <Footer lang={lang} />
+  </div>;
 }
 
 function Router() {
@@ -2362,6 +2461,12 @@ function Router() {
     <Route path="/teams" component={TeamsListPage} />
     <Route path="/teams/:slug">{(params) => <TeamProfilePage slug={params.slug} />}</Route>
     <Route path="/standings" component={StandingsPage} />
+    <Route path="/fixtures" component={FixturesPage} />
+    <Route path="/category/:category">{(params) => <CategoryPage category={params.category} />}</Route>
+    <Route path="/tag/:tag">{(params) => <TagPage tag={params.tag} />}</Route>
+    <Route path="/competition/:slug">{(params) => <CompetitionPage slug={params.slug} />}</Route>
+    <Route path="/login" component={Account} />
+    <Route path="/register" component={Account} />
     <Route path="/partners" component={PartnerDashboardPage} />
     <Route path="/partners/apply" component={PartnerApplicationPage} />
     <Route path="/partners/:identifier">{(params) => <PartnerProfilePage params={params} />}</Route>
@@ -2580,6 +2685,19 @@ function PartnerDashboardPage() {
   const earnings = useQuery({ queryKey: ["partner-earnings", dateFrom, dateTo], queryFn: () => partnerApi.earnings(50, dateFrom, dateTo) });
   const links = useQuery({ queryKey: ["partner-links"], queryFn: () => partnerApi.referralLinks() });
   const [copied, setCopied] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginSecret, setLoginSecret] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const loginMutation = useMutation({
+    mutationFn: () => partnerApi.login(loginEmail, loginSecret),
+    onSuccess: () => { setLoginSecret(""); setLoginError(""); toast.success("Signed in"); me.refetch(); },
+    onError: (e: Error) => setLoginError(errorMessage(e)),
+  });
+  const logoutMutation = useMutation({
+    mutationFn: () => partnerApi.logout(),
+    onSuccess: () => { queryClient.setQueryData(["partner-me"], null); me.refetch(); },
+    onError: (e: Error) => toast.error(errorMessage(e)),
+  });
   const [newLinkForm, setNewLinkForm] = useState({ targetUrl: "/", label: "", utmSource: "", utmMedium: "", utmCampaign: "" });
   const createLink = useMutation({
     mutationFn: () => partnerApi.createReferralLink(newLinkForm.targetUrl, newLinkForm.label || undefined, newLinkForm.utmSource || undefined, newLinkForm.utmMedium || undefined, newLinkForm.utmCampaign || undefined),
@@ -2593,7 +2711,20 @@ function PartnerDashboardPage() {
     return (<div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}><Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} /><main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12"><div className="space-y-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton h-24" />)}</div></main></div>);
   }
   if (me.isError || !p) {
-    return (<div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}><Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} /><main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12"><div className="text-center py-20"><AlertTriangle className="mx-auto mb-4 text-4xl text-[hsl(var(--destructive))]" /><h2 className="font-display text-2xl font-bold">Access Denied</h2><p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">You need an approved partner account to access the dashboard.</p><a href="/partners/apply" className="mt-6 inline-block text-sm font-bold underline text-[hsl(var(--primary))]">Apply to become a partner</a></div></main></div>);
+    return (<div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}><Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} /><main id="main-content" className="mx-auto max-w-[560px] px-5 py-10 lg:px-12">
+      <div className="border bg-[hsl(var(--card))] p-6 sm:p-8">
+        <h1 className="font-display text-2xl font-bold">Partner Sign In</h1>
+        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">Sign in with the email and partner secret issued when your application was approved.</p>
+        <form className="mt-6 space-y-4" onSubmit={(e) => { e.preventDefault(); if (!loginEmail.trim() || !loginSecret.trim()) { setLoginError("Email and partner secret are required"); return; } setLoginError(""); loginMutation.mutate(); }}>
+          <div><label className="block text-xs font-bold uppercase">Email</label><Input type="email" autoComplete="username" className="mt-1 h-11" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="you@example.com" /></div>
+          <div><label className="block text-xs font-bold uppercase">Partner secret</label><Input type="password" autoComplete="current-password" className="mt-1 h-11" value={loginSecret} onChange={(e) => setLoginSecret(e.target.value)} placeholder="spr_p_..." /></div>
+          {loginError && <p className="text-xs text-[hsl(var(--destructive))]">{loginError}</p>}
+          <Button type="submit" className="w-full" disabled={loginMutation.isPending}>{loginMutation.isPending ? "Signing in…" : "Sign in"}</Button>
+        </form>
+        <p className="mt-4 text-[11px] text-[hsl(var(--muted-foreground))]">Your secret is sent once over a secure connection and is never stored in your browser. If you lost it, an administrator can rotate it.</p>
+        <a href="/partners/apply" className="mt-4 inline-block text-sm font-bold underline text-[hsl(var(--primary))]">Not a partner yet? Apply</a>
+      </div>
+    </main></div>);
   }
 
   const shareUrl = `${window.location.origin}/ref/${p.referralCode}`;
@@ -2612,9 +2743,9 @@ function PartnerDashboardPage() {
     <div className="min-h-screen bg-[hsl(var(--background))]" dir={lang === "ar" ? "rtl" : "ltr"}>
       <Header lang={lang} setLang={setLang} onSearch={() => {}} dark={dark} setDark={setDark} />
       <main id="main-content" className="mx-auto max-w-[1440px] px-5 py-10 lg:px-12">
-        <div className="mb-8 border-b-2 border-[hsl(var(--foreground))] pb-4">
-          <h1 className="font-display text-4xl font-bold tracking-[-.06em]">Partner Dashboard</h1>
-          <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">Welcome back, {p.name}</p>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b-2 border-[hsl(var(--foreground))] pb-4">
+          <div><h1 className="font-display text-4xl font-bold tracking-[-.06em]">Partner Dashboard</h1><p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">Welcome back, {p.name}</p></div>
+          <button onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending} className="border border-[hsl(var(--border))] px-3 py-2 text-xs font-bold uppercase transition-colors hover:bg-[hsl(var(--muted))]">{logoutMutation.isPending ? "Signing out…" : "Sign out"}</button>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-2">

@@ -31,9 +31,9 @@ COPY . .
 # Build frontend + API server (typecheck + Vite + esbuild)
 RUN pnpm run build:production
 
-# Push database schema (requires DATABASE_URL at build time or skip)
-# If DATABASE_URL is not available at build time, run db:push separately
-# RUN pnpm run db:push
+# Migrations are applied at container startup (see CMD), not at build time, because
+# DATABASE_URL is only available at runtime. This keeps the image buildable without
+# a database and uses versioned migrations instead of db:push.
 
 # ---------------------------------------------------------------------------
 # Stage 2: Production runtime
@@ -63,7 +63,10 @@ COPY --from=build /app/artifacts/api-server/dist ./artifacts/api-server/dist
 # Copy built frontend (static files served by Express)
 COPY --from=build /app/artifacts/sportyra/dist/public ./artifacts/sportyra/dist/public
 
-# Copy database schema source (needed by drizzle-kit at runtime for db:push)
+# Copy versioned migrations and the migration runner. The runner uses drizzle-orm and
+# pg, both production dependencies installed by `pnpm install --prod` in this stage.
+COPY --from=build /app/lib/db/drizzle ./lib/db/drizzle
+COPY --from=build /app/lib/db/scripts ./lib/db/scripts
 COPY --from=build /app/lib/db/src ./lib/db/src
 COPY --from=build /app/lib/db/drizzle.config.ts ./lib/db/
 
@@ -74,5 +77,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:' + (process.env.PORT || 3000) + '/api/healthz').then(r => { process.exit(r.ok ? 0 : 1) }).catch(() => process.exit(1))"
 
-# Start from project root so static file path resolves correctly
-CMD ["node", "artifacts/api-server/dist/index.mjs"]
+# Apply versioned migrations, then start the API server from the project root so the
+# static file path resolves correctly.
+CMD ["sh", "-c", "node lib/db/scripts/migrate-deploy.mjs && node artifacts/api-server/dist/index.mjs"]

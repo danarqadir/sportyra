@@ -8,6 +8,7 @@ import { db, newsTable, competitionsTable, teamsTable, playersTable, analyticsEv
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { ClientError } from "./lib/errors";
+import { resolveTrustProxy } from "./lib/trust-proxy";
 
 const app: Express = express();
 
@@ -35,7 +36,12 @@ const allowedOrigins = process.env["CORS_ORIGIN"]
   : process.env.NODE_ENV === "production" ? false : true;
 
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+// Trust the reverse proxy's X-Forwarded-For only when the direct socket peer is
+// the trusted loopback proxy (see lib/trust-proxy.ts). Defaults to "loopback";
+// override via TRUST_PROXY for platforms whose proxy connects from a non-loopback
+// address. This prevents a remote client that connects directly (no proxy) from
+// spoofing `req.ip`, which rate limiting and fraud/referral IP hashing rely on.
+app.set("trust proxy", resolveTrustProxy(process.env["TRUST_PROXY"]));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");

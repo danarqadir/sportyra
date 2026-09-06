@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db, adPlacementsTable, adEventsTable } from "@workspace/db";
 import { and, eq, desc, count, sql, gte, lte, isNull, or } from "drizzle-orm";
-import { requireAdmin } from "../lib/auth";
+import { requireAdmin, requireAdminMutation } from "../lib/auth";
 import { rateLimit, adminMutationRateLimit } from "../lib/rate-limit";
+import { getClientIp } from "../lib/client-ip";
 import crypto from "node:crypto";
 
 const router = Router();
@@ -14,9 +15,8 @@ function hashValue(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
-function getIp(req: { headers: Record<string, unknown>; socket?: { remoteAddress?: string } | null }): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  return (typeof forwarded === "string" ? forwarded.split(",")[0]?.trim() : null) || req.socket?.remoteAddress || "";
+function getIp(req: { ip?: string; socket?: { remoteAddress?: string } | null }): string {
+  return getClientIp({ ip: req.ip, socket: req.socket });
 }
 
 function hashIp(ip: string): string {
@@ -69,7 +69,7 @@ router.get("/ads/placements", async (req, res, next): Promise<void> => {
   } catch (error) { next(error); }
 });
 
-router.post("/admin/ads", requireAdmin, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
+router.post("/admin/ads", requireAdminMutation, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
   try {
     const body = req.body as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 200) : "";
@@ -108,7 +108,7 @@ router.post("/admin/ads", requireAdmin, rateLimit({ windowMs: 60_000, max: 30 })
   } catch (error) { next(error); }
 });
 
-router.patch("/admin/ads/:id", requireAdmin, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
+router.patch("/admin/ads/:id", requireAdminMutation, rateLimit({ windowMs: 60_000, max: 30 }), async (req, res, next): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -139,7 +139,7 @@ router.patch("/admin/ads/:id", requireAdmin, rateLimit({ windowMs: 60_000, max: 
   } catch (error) { next(error); }
 });
 
-router.delete("/admin/ads/:id", requireAdmin, adminMutationRateLimit, async (req, res, next): Promise<void> => {
+router.delete("/admin/ads/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next): Promise<void> => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid ID" }); return; }

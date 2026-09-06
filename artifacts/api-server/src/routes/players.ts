@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, playersTable } from "@workspace/db";
 import { eq, desc, asc, ilike, or, sql, and } from "drizzle-orm";
-import { requireAdmin } from "../lib/auth";
+import { requireAdminMutation } from "../lib/auth";
 import { PlayerCreate, PlayerUpdate } from "../lib/validation";
 import { adminMutationRateLimit } from "../lib/rate-limit";
 
@@ -46,7 +46,7 @@ router.get("/players/:slug", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post("/players", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.post("/players", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const parsed = PlayerCreate.safeParse(req.body);
     if (!parsed.success) {
@@ -66,7 +66,7 @@ router.post("/players", requireAdmin, adminMutationRateLimit, async (req, res, n
   } catch (error) { next(error); }
 });
 
-router.patch("/players/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.patch("/players/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid player id" }); return; }
@@ -86,7 +86,7 @@ router.patch("/players/:id", requireAdmin, adminMutationRateLimit, async (req, r
   } catch (error) { next(error); }
 });
 
-router.delete("/players/:id", requireAdmin, adminMutationRateLimit, async (req, res, next) => {
+router.delete("/players/:id", requireAdminMutation, adminMutationRateLimit, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid player id" }); return; }
